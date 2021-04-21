@@ -11,7 +11,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 # 
-#     http://www.apache.org/licenses/LICENSE-2.0
+#	  http://www.apache.org/licenses/LICENSE-2.0
 # 
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -122,7 +122,7 @@ def set_cu2_error_log_path(log_path):
 # **********************************************************************************************************
 # SCRIPT START
 # **********************************************************************************************************
-def start_cue2cu2(cuesheet):
+def start_cue2cu2(cuesheet, binaryfile_name):
 	# Hardcoded for CU2 revision 2
 	format_revision = int(2) 
 
@@ -145,18 +145,8 @@ def start_cue2cu2(cuesheet):
 		_log_error('ERROR', f'Cue sheet {str(cuesheet)} indicates this image is not in MODE2/2352')
 		return False
 		
-	# Extract the filename of the main image or binary file
-	for line in cuesheet_content:
-		if compile('[ \t]*[Ff][Ii][Ll][Ee].*[Bb][Ii][Nn][Aa][Rr][Yy].*').match(line):
-			binaryfile = str(line)[6:][::-1][8:][::-1]
-			break
-		else:
-			_log_error('ERROR', f'Could not find binary file in cue sheet: {str(cuesheet)}')
-			return False
-			
-	# Use the CUE files path to determine the BIN file path
 	bin_path = str(Path(cuesheet).parent)
-	binaryfile = join(bin_path, binaryfile)
+	binaryfile = join(bin_path, binaryfile_name)
 	output = str()
 	
 	# Get number of tracks from cue sheet
@@ -166,8 +156,13 @@ def start_cue2cu2(cuesheet):
 			ntracks += 1
 	output = f'{output}ntracks {str(ntracks)}\r\n'
 	
+	sectors = _convert_filesize_to_sectors(binaryfile)
+	
+	if sectors is None:
+		return False
+	
 	# Get the total runtime/size
-	size = _convert_sectors_to_timecode(_convert_filesize_to_sectors(binaryfile))
+	size = _convert_sectors_to_timecode(sectors)
 	output = f'{output}size	   {size}\r\n'
 	
 	# Get data1 - well, this is always the same for our kind of disc images, so...

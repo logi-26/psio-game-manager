@@ -22,7 +22,6 @@
 #  with this program; if not, write to the Free Software Foundation, Inc.,
 #  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-
 from tkinter import *
 from tkinter import ttk, filedialog
 from tkinter.ttk import Progressbar
@@ -44,77 +43,88 @@ log_path = join(dirname(script_root_dir), 'error_log')
 covers_path = join(dirname(script_root_dir), 'covers')
 error_log_file = join(log_path, 'log.txt')
 
-
 # Set the error log path for all of the scripts
 set_cu2_error_log_path(error_log_file)
 set_binmerge_error_log_path(error_log_file)
 
 game_data = []
 window = None
+CURRENT_REVISION = 0.1
 
 
 # *****************************************************************************************************************
 # Function that processes a single game
 def _process_single_game(cue_path):
+	label_progress.configure(text = 'Reading original bin files...')
 
 	# Get the game name (using data from redump rather than the cue sheet so that multi-disc games go into 1 folder)
 	game_name = _get_game_name(cue_path)
-	#game_name = _get_game_name_from_cue(cue_path, False)
+	original_game_name = _get_game_name_from_cue(cue_path, False)
+	game_id = _get_game_id(join(dirname(cue_path) , f'{_get_game_name_from_cue(cue_path, True)}.bin'))
 	
-	label_progress.configure(text = 'Creating game directory...')
- 
-	# Create the game directory in the output directory
-	game_dir_name = game_name
-	if len(game_name) > 9:
-		if game_name[len(game_name)-7:-3] == 'Disc':
-			game_dir_name = game_name[:-9]	
-	game_output_path = join(output_path, game_dir_name)
-
-	if _create_directory(game_output_path):
+	# If we do not have info for this game we will use the game name from the original cue file
+	if game_name == '':
+		game_name = original_game_name.replace('.', '-')
 	
+	if game_name != '':
+		label_progress.configure(text = 'Creating game directory...')
 		_update_progress_bar(15)
-		out_bin_path = join(game_output_path, f'{game_name}.bin')
-		out_cue_path = join(game_output_path, f'{game_name}.cue')
-		out_cu2_path = join(game_output_path, f'{game_name}.cu2')
-		
-		if not exists(out_bin_path) and not exists(out_cu2_path):
-		
-			# Ensure that all of the required files exist
-			if _all_game_files_exist(cue_path):
-				_update_progress_bar(30)
+	 
+		# Create the game output directory and ensure multi-disc games go into the same directory
+		game_dir_name = game_name
+		if len(game_name) > 9:
+			if game_name[len(game_name)-7:-3] == 'Disc':
+				game_dir_name = game_name[:-9]	
+		game_output_path = join(output_path, game_dir_name)
+
+		if _create_directory(game_output_path):
+			out_bin_path = join(game_output_path, f'{game_name}.bin')
+			out_cue_path = join(game_output_path, f'{game_name}.cue')
+			out_cu2_path = join(game_output_path, f'{game_name}.cu2')
 			
-				# If the game is a multi-bin game, merge the bin files using the binmerge script, otherwise copy the single bin file
-				if _is_multi_bin(cue_path):
-					label_progress.configure(text = 'Merging BIN files...')
-					start_bin_merge(cue_path, game_name, game_output_path)
+			if not exists(out_bin_path) and not exists(out_cu2_path):
+				label_progress.configure(text = 'Checking original files...')
+				
+				# Ensure that all of the required files exist
+				if _all_game_files_exist(cue_path):
+					_update_progress_bar(30)
+				
+					# If the game is a multi-bin game, merge the bin files using the binmerge script, otherwise copy the single bin file
+					if _is_multi_bin(cue_path):
+						label_progress.configure(text = 'Merging BIN files...')
+						start_bin_merge(cue_path, game_name, game_output_path)
+					else:
+						label_progress.configure(text = 'Copying BIN file...')
+						copyfile(join(dirname(cue_path) , f'{original_game_name}.bin'), out_bin_path)
+						
+						label_progress.configure(text = 'Copying CUE file...')
+						copyfile(cue_path, out_cue_path)
+					
+					_update_progress_bar(60)
+					
+					# Generate the CU2 file using the cue2cu2 script
+					label_progress.configure(text = 'Generating CU2 file...')
+					start_cue2cu2(out_cue_path, f'{game_name}.bin')
+						
+					_update_progress_bar(90)
+						
+					# Copy the game cover (if it exists) to the games output directory
+					_copy_game_cover(game_output_path, covers_path, game_id, game_dir_name)
+					
+					if exists(out_bin_path) and exists(out_cu2_path):
+						label_progress.configure(text = 'Finished processing game...')
+					else:
+						label_progress.configure(text = 'Error processing game...') 
 				else:
-					label_progress.configure(text = 'Copying BIN file...')
-					copyfile(join(dirname(cue_path) , f'{game_name}.bin'), out_bin_path)
-					
-					label_progress.configure(text = 'Copying CUE file...')
-					copyfile(cue_path, out_cue_path)
-				
-				_update_progress_bar(60)
-				
-				# Generate the CU2 file using the cue2cu2 script
-				label_progress.configure(text = 'Generating CU2 file...')
-				start_cue2cu2(out_cue_path)
-					
-				_update_progress_bar(90)
-					
-				# Copy the game cover (if it exists) to the games output directory
-				_copy_game_cover(game_output_path, covers_path, _get_game_id(out_bin_path), game_dir_name)
-				
-				if exists(out_bin_path) and exists(out_cu2_path):
-					label_progress.configure(text = 'Finished processing game...')
-				else:
-					label_progress.configure(text = 'Error processing game...') 
+					_log_error('ERROR', f'NOT all game files exists: {cue_path}')
 			else:
-				_log_error('ERROR', f'NOT all game files exists: {cue_path}')
+				_log_error('ERROR', f'Game output directory already exists: {game_name}')
+				label_progress.configure(text = f'Game already exists: {game_name}')
 		else:
-			_log_error('WARNING', f'Game already exists: {game_name}')
-			label_progress.configure(text = f'Game already exists: {game_name}')
-				
+			_log_error('ERROR', f'Unable to create the game output directory: {game_output_path}')
+	else:
+		_log_error('ERROR', f'Could not determine the game name: {cue_path}')
+						
 	_update_progress_bar(100)
 # *****************************************************************************************************************
 
@@ -125,9 +135,9 @@ def _process_multiple_games(selected_path):
 	cue_list = []
 	for root, dirs, files in walk(selected_path):
 		for file in files:
-			if file.endswith('.cue') or file.endswith('.CUE'):
+			if file.lower().endswith('.cue'):
 				 cue_list.append(join(root, file))
-				 
+	
 	for cue_file in cue_list:
 		_process_single_game(cue_file)
 # *****************************************************************************************************************
@@ -144,7 +154,7 @@ def _read_game_data_file():
 	for line in lines:
 		split_line = line.split(',')
 		try:
-			game_data.append((split_line[0], split_line[1].strip(), int(split_line[2].strip()), int(split_line[3].strip()), int(split_line[4].strip()), int(split_line[5].strip())))
+			game_data.append((split_line[0], split_line[1].strip(), int(split_line[2].strip())))
 		except:
 			pass
 # *****************************************************************************************************************
@@ -161,17 +171,24 @@ def _get_disc_number(game_id):
 
 
 # *****************************************************************************************************************
-# Function to get the game name (using names from redump)
+# Function to get the game name (using names from redump and the psx data-centre)
 def _get_game_name(cue_path):
-	game_name = _get_game_name_from_cue(cue_path, True)
-	bin_file_path = join(dirname(cue_path) , f'{game_name}.bin')
-	game_id = _get_game_id(bin_file_path)
+	game_id = _get_game_id(join(dirname(cue_path) , f'{_get_game_name_from_cue(cue_path, True)}.bin'))
 	for line in game_data:
 		if line[0] == game_id:
+			game_name = line[1]
+			
+			# Ensure that the game name (including disc number and extension) is not more than 60 chars
 			if int(line[2]) > 0:
-				return f'{line[1]} (Disc {line[2]})'
+				if len(game_name) <= 47:
+					return f'{game_name} (Disc {line[2]})'
+				else:
+					return f'{game_name[:47]} (Disc {line[2]})'
 			else:
-				return line[1]
+				if len(game_name) <= 47:
+					return line[1]
+				else:
+					return f'{line[1][:47]}'
 	return ''
 # *****************************************************************************************************************
 
@@ -179,11 +196,14 @@ def _get_game_name(cue_path):
 # *****************************************************************************************************************
 # Function to get the game name from the cue sheet (using the binmerge script)
 def _get_game_name_from_cue(cue_path, include_track):
-	game_name = basename(read_cue_file(cue_path)[0].filename)
-	if not include_track:
-		if 'Track' in game_name:
-			game_name = game_name[:game_name.rfind('(', 0) -1]
-	return splitext(game_name)[0]
+	cue_content = read_cue_file(cue_path)
+	if cue_content != []:
+		game_name = basename(cue_content[0].filename)
+		if not include_track:
+			if 'Track' in game_name:
+				game_name = game_name[:game_name.rfind('(', 0) -1]
+		return splitext(game_name)[0]
+	return ''
 # *****************************************************************************************************************
 
 
@@ -195,19 +215,20 @@ def _generate_multidisc_file():
 		bin_files = [f for f in listdir(join(output_path, game_dir)) if f.endswith('.bin')]
 
 		# If there is more than 1 bin file, this should be a multi-disc game
-		mult_disc_bins = []
+		multi_disc_bins = []
 		if len(bin_files) > 1:
 			for bin_file in bin_files:
 				disc_number = _get_disc_number(_get_game_id(join(output_path, game_dir, bin_file)))
 				if disc_number > 0:
-					mult_disc_bins.insert(disc_number-1, bin_file)
+					multi_disc_bins.insert(disc_number-1, bin_file)
 
 		# Create the MULTIDISC.LST file
-		if len(mult_disc_bins) > 0:
+		if len(multi_disc_bins) > 0:
 			with open(join(output_path, game_dir, 'MULTIDISC.LST'), 'w') as multi_disc_file:
-				for count, binfile in enumerate(mult_disc_bins):
-					if count < len(mult_disc_bins)-1:
-						multi_disc_file.write(f'{binfile}\n')
+				for count, binfile in enumerate(multi_disc_bins):
+					if count < len(multi_disc_bins)-1:
+						#multi_disc_file.write(f'{binfile}\n')
+						multi_disc_file.write(f'{binfile}\r')
 					else:
 						multi_disc_file.write(binfile)
 # *****************************************************************************************************************
@@ -216,19 +237,20 @@ def _generate_multidisc_file():
 # *****************************************************************************************************************
 # Function to get the unique game id from the bin file
 def _get_game_id(bin_file_path):
-	region_codes = ['SCES_', 'SLES_', 'SCUS_', 'SLUS_', 'SLPS_', 'SCAJ_', 'SLKA_', 'SLPM_', 'SCPS_']
+	region_codes = ['DTLS_', 'SCES_', 'SLES_', 'SLED_', 'SCED_', 'SCUS_', 'SLUS_', 'SLPS_', 'SCAJ_', 'SLKA_', 'SLPM_', 'SCPS_', 'SCPM_', 'PCPX_', 'PAPX_', 'PTPX_', 'LSP0_', 'LSP1_', 'LSP2_', 'LSP9_', 'SIPS_', 'ESPM_', 'SCZS_', 'SPUS_', 'PBPX_', 'LSP_']
 	game_id = None
-	with open(bin_file_path, 'rb') as bin_file:
-		while game_id == None:
-			try:
-				line = str(next(bin_file))
-				if line != None:
-					for region_code in region_codes:
-						if region_code in line:
-							start = line.find(region_code)
-							game_id = line[start:start + 11]
-			except StopIteration:
-				break				 
+	if exists(bin_file_path):
+		with open(bin_file_path, 'rb') as bin_file:
+			while game_id == None:
+				try:
+					line = str(next(bin_file))
+					if line != None:
+						for region_code in region_codes:
+							if region_code in line:
+								start = line.find(region_code)
+								game_id = line[start:start + 11]
+				except StopIteration:
+					break				 
 	return game_id.replace('_', '-').replace('.', '').strip() if game_id is not None else None
 # *****************************************************************************************************************
 
@@ -373,7 +395,7 @@ if len(game_data) == 0:
 window = Tk() 
   
 # App title
-window.title('PSIO Game Assistant') 
+window.title(f'PSIO Game Assistant  v{CURRENT_REVISION}') 
   
 # The GUI window size
 window.geometry('600x150') 

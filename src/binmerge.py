@@ -146,27 +146,31 @@ def read_cue_file(cue_path):
 	this_file = None
 
 	f = open(cue_path, 'r')
-	for line in f:
-		m = search('FILE "?(.*?)"? BINARY', line)
-		if m:
-			this_file = File(join(dirname(cue_path), m.group(1)))
-			files.append(this_file)
+	try:
+		for line in f:
+			m = search('FILE "?(.*?)"? BINARY', line)
+			if m:
+				this_file = File(join(dirname(cue_path), m.group(1)))
+				files.append(this_file)
 
-		m = search('TRACK (\d+) ([^\s]*)', line)
-		if m:
-			this_track = Track(int(m.group(1)), m.group(2))
-			this_file.tracks.append(this_track)
+			m = search('TRACK (\d+) ([^\s]*)', line)
+			if m:
+				this_track = Track(int(m.group(1)), m.group(2))
+				this_file.tracks.append(this_track)
 
-		m = search('INDEX (\d+) (\d+:\d+:\d+)', line)
-		if m:
-			this_track.indexes.append({'id': int(m.group(1)), 'stamp': m.group(2), 'file_offset':_cuestamp_to_sectors(m.group(2))})
+			m = search('INDEX (\d+) (\d+:\d+:\d+)', line)
+			if m:
+				this_track.indexes.append({'id': int(m.group(1)), 'stamp': m.group(2), 'file_offset':_cuestamp_to_sectors(m.group(2))})
 
-	if len(files) == 1:
-		# only 1 file, assume splitting, calc sectors of each
-		next_item_offset = files[0].size // Track.globalBlocksize
-		for t in reversed(files[0].tracks):
-			t.sectors = next_item_offset - t.indexes[0]['file_offset']
-			next_item_offset = t.indexes[0]['file_offset']
+		if len(files) == 1:
+			# only 1 file, assume splitting, calc sectors of each
+			next_item_offset = files[0].size // Track.globalBlocksize
+			for t in reversed(files[0].tracks):
+				t.sectors = next_item_offset - t.indexes[0]['file_offset']
+				next_item_offset = t.indexes[0]['file_offset']
+				
+	except:
+		_log_error('ERROR', f'Issue reading cue file: {cue_path}')
 	
 	return files
 # **********************************************************************************************************
