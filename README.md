@@ -9,6 +9,7 @@ Merges multi-bin games into a single bin file.<br/>
 Generates cu2 files for all games.<br/>
 Works in batch mode on all bin/cue files in the selected directory and any sub-directories.<br/>
 Adds the game cover image.<br/>
+Ensures that game names are not greater than 60 characters and does not contain periods.<br/>
 Generates the MULTIDISC.LST file for mult-disc games.<br/>
 Does not modify the original bin/cue files.<br/>
 
