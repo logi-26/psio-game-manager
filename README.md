@@ -2,7 +2,7 @@
 Python scripts with a basic GUI to prepare PlayStation 1 bin/cue games for use with a PSIO device.<br>
 Works on Linux, Mac and Windows.<br>
 
-![alt text](https://github.com/logi-26/psio-assist/blob/main/image.png?raw=true)
+![alt text](https://github.com/logi-26/psio-assist/blob/v0.2/image.png?raw=true)
 
 **This application:**<br/>
 Merges multi-bin games into a single bin file.<br/>
