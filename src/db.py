@@ -12,6 +12,7 @@ from fsplit.filesplit import Filesplit
 
 DATABASE_PATH = join(Path(abspath(dirname(argv[0]))), 'data')
 DATABASE_FILE = 'psio_assist.db'
+DATABASE_MANIFEST_FILE = 'fs_manifest.csv'
 DATABASE_FULL_PATH = join(DATABASE_PATH, DATABASE_FILE)
 
 
@@ -80,8 +81,8 @@ def _delete_database_splits():
 	for i in range(1,5):
 		if exists(join(DATABASE_PATH, f'psio_assist_{i}.db')):
 			remove(join(DATABASE_PATH, f'psio_assist_{i}.db'))
-	if exists(join(DATABASE_PATH, 'fs_manifest.csv')):
-		remove(join(DATABASE_PATH, 'fs_manifest.csv'))
+	if exists(join(DATABASE_PATH, DATABASE_MANIFEST_FILE)):
+		remove(join(DATABASE_PATH, DATABASE_MANIFEST_FILE))
 # *****************************************************************************************************************
 
 

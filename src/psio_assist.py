@@ -64,23 +64,12 @@ covers_path = None
 # Get the directory paths based on the scripts location
 script_root_dir = Path(abspath(dirname(argv[0])))
 output_path = join(dirname(script_root_dir), 'output')
-log_path = join(dirname(script_root_dir), 'error_log')
 covers_path = join(dirname(script_root_dir), 'covers')
-error_log_file = join(log_path, 'log.txt')
 CONFIG_FILE_PATH = join(script_root_dir, 'config')
 
 # Set the error log path for all of the scripts
 set_cu2_error_log_path(error_log_file)
 set_binmerge_error_log_path(error_log_file)
-
-
-
-# *****************************************************************************************************************
-# Function to log basic error messages to a file
-def _log_error(error_type, error_message):
-	with open(error_log_file, 'a') as error_log:
-		error_log.write(f'[{error_type}]: {error_message}\n')
-# *****************************************************************************************************************
 
 
 # *****************************************************************************************************************
