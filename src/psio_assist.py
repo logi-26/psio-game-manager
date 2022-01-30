@@ -44,6 +44,8 @@ from ttkbootstrap import Label
 from ttkbootstrap import Button
 from ttkbootstrap import Floodgauge
 from ttkbootstrap import Checkbutton
+from py7zr import SevenZipFile
+import threading
 
 # Local imports
 from game_files import Game, Cuesheet, Binfile
@@ -52,7 +54,6 @@ from cue2cu2 import set_cu2_error_log_path, start_cue2cu2
 
 REGION_CODES = ['DTLS_', 'SCES_', 'SLES_', 'SLED_', 'SCED_', 'SCUS_', 'SLUS_', 'SLPS_', 'SCAJ_', 'SLKA_', 'SLPM_', 'SCPS_', 'SCPM_', 'PCPX_', 'PAPX_', 'PTPX_', 'LSP0_', 'LSP1_', 'LSP2_', 'LSP9_', 'SIPS_', 'ESPM_', 'SCZS_', 'SPUS_', 'PBPX_', 'LSP_']
 CURRENT_REVISION = 0.2
-CONTROL_HEIGHT = 0.08
 PROGRESS_STATUS = 'Status:'
 MAX_GAME_NAME_LENGTH = 56
 
@@ -67,6 +68,7 @@ output_path = join(dirname(script_root_dir), 'output')
 log_path = join(dirname(script_root_dir), 'error_log')
 covers_path = join(dirname(script_root_dir), 'covers')
 error_log_file = join(log_path, 'log.txt')
+DATABASE_PATH = join(script_root_dir, 'psio_assist.db')
 CONFIG_FILE_PATH = join(script_root_dir, 'config')
 
 
@@ -76,42 +78,40 @@ set_binmerge_error_log_path(error_log_file)
 
 
 # *****************************************************************************************************************
-# Function that reads the game data file into a list
-def _read_game_data_file():
-	global game_data
-	game_data_file = join(script_root_dir, 'game_data')
-	lines = []
-	with open(game_data_file) as f:
-		lines = f.readlines()
-	lines = [x.strip() for x in lines] 
-	for line in lines:
-		split_line = line.split(',')
-		try:
-			game_data.append((split_line[0], split_line[1].strip(), int(split_line[2].strip())))
-		except:
-			pass
+# Function that extracts the database file
+def _extract_database():
+	print('Extracting database file...')
+	with SevenZipFile(f'{DATABASE_PATH}.7z', mode='r') as zip:
+		zip.extractall()
 # *****************************************************************************************************************
 
 
 # *****************************************************************************************************************
-# Function to create a directory
-def _create_directory(dir):
-	if not exists(dir):
-		try:
-			mkdir(dir)
-		except:
-			pass
-	return exists(dir)
-# *****************************************************************************************************************
-
-
-# *****************************************************************************************************************
-# Function that creates the nessasary directories for these scripts (in case the user has deleted them)
-def _create_psio_assist_directories():
-	output_path_exists = _create_directory(output_path)
-	log_path_exists = _create_directory(log_path)
-	covers_path_exists = _create_directory(covers_path)
-	return output_path_exists and log_path_exists and covers_path_exists
+# Function that ensures that the database file exists and is extracted
+def _ensure_database_exists():
+	if not exists(DATABASE_PATH):
+		if exists(f'{DATABASE_PATH}.7z'):
+			
+			progress_bar_indeterminate.start(20)
+			
+			#_extract_database()
+			
+			th = threading.Thread(target=_extract_database)
+			th.start()
+			for i in range(300):
+				_update_window()
+			th.join()
+			
+			if not exists(DATABASE_PATH):
+				print('Unable to extract database file!')
+				exit()
+			else:
+				print('Database file has been extracted')
+				progress_bar_indeterminate.stop()
+				_update_progress_bar_2(0)
+		else:
+			print('Database file does not exist!')
+			exit()
 # *****************************************************************************************************************
 
 
@@ -694,18 +694,14 @@ def _switch_theme(theme_name):
 # ***************************************************************************************************************** 
 
 	
+	
+	
+	
+	
 
 # *************************************************
 # Run the GUI
 # *************************************************
-if not _create_psio_assist_directories():
-	_log_error('ERROR', 'Unable to create some of the required directories.')
-	exit()
-	
-_read_game_data_file()
-if len(game_data) == 0:
-	_log_error('ERROR', 'Unable to read the \'game_data\' file.')
-	exit()
 
 # Create the main window
 window = ttk.Window(title=f'PSIO Game Assistant v{CURRENT_REVISION}',themename=_get_stored_theme(), size=[800,710], resizable=[False, False])
@@ -879,8 +875,21 @@ button_start.place(x=640, y=630, width=130, height=30)
 label_progress = Label(window, text=PROGRESS_STATUS, width = 120, bootstyle="primary")
 label_progress.place(x=30, y=658, width=750, height=30)
 
+label_progress.after(1000, _ensure_database_exists)
+
 _prevent_hidden_files(window)
 
 # Loop to display/control the GUI
 window.mainloop() 
 # *****************************************************************************************************************
+
+
+
+
+
+
+
+
+
+
+
