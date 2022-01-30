@@ -44,14 +44,12 @@ from ttkbootstrap import Label
 from ttkbootstrap import Button
 from ttkbootstrap import Floodgauge
 from ttkbootstrap import Checkbutton
-#from py7zr import SevenZipFile
-#import threading
-from fsplit.filesplit import Filesplit
 
 # Local imports
 from game_files import Game, Cuesheet, Binfile
 from binmerge import set_binmerge_error_log_path, start_bin_merge, read_cue_file
 from cue2cu2 import set_cu2_error_log_path, start_cue2cu2
+from db import ensure_database_exists, select
 
 REGION_CODES = ['DTLS_', 'SCES_', 'SLES_', 'SLED_', 'SCED_', 'SCUS_', 'SLUS_', 'SLPS_', 'SCAJ_', 'SLKA_', 'SLPM_', 'SCPS_', 'SCPM_', 'PCPX_', 'PAPX_', 'PTPX_', 'LSP0_', 'LSP1_', 'LSP2_', 'LSP9_', 'SIPS_', 'ESPM_', 'SCZS_', 'SPUS_', 'PBPX_', 'LSP_']
 CURRENT_REVISION = 0.2
@@ -69,51 +67,12 @@ output_path = join(dirname(script_root_dir), 'output')
 log_path = join(dirname(script_root_dir), 'error_log')
 covers_path = join(dirname(script_root_dir), 'covers')
 error_log_file = join(log_path, 'log.txt')
-DATABASE_PATH = join(script_root_dir, 'data')
-DATABASE_FILE = 'psio_assist.db'
 CONFIG_FILE_PATH = join(script_root_dir, 'config')
 
 # Set the error log path for all of the scripts
 set_cu2_error_log_path(error_log_file)
 set_binmerge_error_log_path(error_log_file)
 
-
-# *****************************************************************************************************************
-# Function that checks if each of the database split-files exist
-def _database_splits_exist():
-	for i in range(1,5):
-		if not exists(join(DATABASE_PATH, f'psio_assist_{i}.db')):
-			return False
-	if not exists(join(DATABASE_PATH, 'fs_manifest.csv')):
-		return False
-	return True
-# *****************************************************************************************************************
-
-
-# *****************************************************************************************************************
-# Function that merges the split database files
-def _merge_database():
-	fs = Filesplit()
-	fs.merge(input_dir=DATABASE_PATH)
-# *****************************************************************************************************************
-
-
-# *****************************************************************************************************************
-# Function that ensures the database file exists and has been merged
-def _ensure_database_exists():
-	database_full_path = join(DATABASE_PATH, DATABASE_FILE)
-	if not exists(database_full_path):
-		if _database_splits_exist():
-			_merge_database()
-			if not exists(database_full_path):
-				print('Unable to merge database file!')
-				exit()
-			else:
-				print('Database file has been merged')
-		else:
-			print('Database split-files not found!')
-			exit()
-# *****************************************************************************************************************
 
 
 # *****************************************************************************************************************
@@ -876,7 +835,7 @@ button_start.place(x=640, y=630, width=130, height=30)
 label_progress = Label(window, text=PROGRESS_STATUS, width = 120, bootstyle="primary")
 label_progress.place(x=30, y=658, width=750, height=30)
 
-label_progress.after(1000, _ensure_database_exists)
+label_progress.after(1000, ensure_database_exists)
 
 _prevent_hidden_files(window)
 
