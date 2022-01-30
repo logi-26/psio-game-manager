@@ -37,15 +37,16 @@ from ttkbootstrap.constants import *
 from ttkbootstrap import Progressbar
 from ttkbootstrap.dialogs import MessageDialog
 from ttkbootstrap import Treeview
-from ttkbootstrap import Style 
+from ttkbootstrap import Style
 from ttkbootstrap import Scrollbar
 from ttkbootstrap import Labelframe
 from ttkbootstrap import Label
 from ttkbootstrap import Button
 from ttkbootstrap import Floodgauge
 from ttkbootstrap import Checkbutton
-from py7zr import SevenZipFile
-import threading
+#from py7zr import SevenZipFile
+#import threading
+from fsplit.filesplit import Filesplit
 
 # Local imports
 from game_files import Game, Cuesheet, Binfile
@@ -68,9 +69,9 @@ output_path = join(dirname(script_root_dir), 'output')
 log_path = join(dirname(script_root_dir), 'error_log')
 covers_path = join(dirname(script_root_dir), 'covers')
 error_log_file = join(log_path, 'log.txt')
-DATABASE_PATH = join(script_root_dir, 'psio_assist.db')
+DATABASE_PATH = join(script_root_dir, 'data')
+DATABASE_FILE = 'psio_assist.db'
 CONFIG_FILE_PATH = join(script_root_dir, 'config')
-
 
 # Set the error log path for all of the scripts
 set_cu2_error_log_path(error_log_file)
@@ -78,39 +79,39 @@ set_binmerge_error_log_path(error_log_file)
 
 
 # *****************************************************************************************************************
-# Function that extracts the database file
-def _extract_database():
-	print('Extracting database file...')
-	with SevenZipFile(f'{DATABASE_PATH}.7z', mode='r') as zip:
-		zip.extractall()
+# Function that checks if each of the database split-files exist
+def _database_splits_exist():
+	for i in range(1,5):
+		if not exists(join(DATABASE_PATH, f'psio_assist_{i}.db')):
+			return False
+	if not exists(join(DATABASE_PATH, 'fs_manifest.csv')):
+		return False
+	return True
 # *****************************************************************************************************************
 
 
 # *****************************************************************************************************************
-# Function that ensures that the database file exists and is extracted
+# Function that merges the split database files
+def _merge_database():
+	fs = Filesplit()
+	fs.merge(input_dir=DATABASE_PATH)
+# *****************************************************************************************************************
+
+
+# *****************************************************************************************************************
+# Function that ensures the database file exists and has been merged
 def _ensure_database_exists():
-	if not exists(DATABASE_PATH):
-		if exists(f'{DATABASE_PATH}.7z'):
-			
-			progress_bar_indeterminate.start(20)
-			
-			#_extract_database()
-			
-			th = threading.Thread(target=_extract_database)
-			th.start()
-			for i in range(300):
-				_update_window()
-			th.join()
-			
-			if not exists(DATABASE_PATH):
-				print('Unable to extract database file!')
+	database_full_path = join(DATABASE_PATH, DATABASE_FILE)
+	if not exists(database_full_path):
+		if _database_splits_exist():
+			_merge_database()
+			if not exists(database_full_path):
+				print('Unable to merge database file!')
 				exit()
 			else:
-				print('Database file has been extracted')
-				progress_bar_indeterminate.stop()
-				_update_progress_bar_2(0)
+				print('Database file has been merged')
 		else:
-			print('Database file does not exist!')
+			print('Database split-files not found!')
 			exit()
 # *****************************************************************************************************************
 
@@ -128,31 +129,31 @@ def _log_error(error_type, error_message):
 def _process_games():
 	for game in game_list:
 		#_print_game_details(game)
-		
+
 		game_id = game.id
 		game_name = game.cue_sheet.game_name
-		
+
 		game_full_path = join(game.directory_path, game.directory_name)
 		cue_full_path = join(game_full_path, game.cue_sheet.file_name)
-		
+
 		label_progress.configure(text = f'{PROGRESS_STATUS} Processing - {game_name}')
-		
+
 		print(f'GAME_ID: {game_id}')
 		print(f'GAME_NAME: {game_name}')
 		print(f'GAME_PATH: {game_full_path}')
 		print(f'CUE_PATH: {cue_full_path}')
-		
+
 		if merge_bin_files.get() and len(game.cue_sheet.bin_files) > 1:
 			print('MERGE BIN FILES HERE')
 			label_progress.configure(text = f'{PROGRESS_STATUS} Merging bin files - {game_name}')
 			_merge_bin_files(game, game_name, game_full_path, cue_full_path)
 			start_cue2cu2(cue_full_path, f'{game_name}.bin')
-				
+
 		if force_cu2.get() and not game.cu2_present:
 			print('GENERATE CU2 HERE')
 			label_progress.configure(text = f'{PROGRESS_STATUS} Generating cu2 file - {game_name}')
 			start_cue2cu2(cue_full_path, f'{game_name}.bin')
-			
+
 		if auto_rename.get():
 			print('RENAME THE GAME USING REDUMP NAMES HERE')
 			label_progress.configure(text = f'{PROGRESS_STATUS} Renaming - {game_name}')
@@ -166,14 +167,14 @@ def _process_games():
 				new_game_name = _game_name_validator(game)
 				if new_game_name != game_name:
 					_rename_game(game_full_path, game_name, new_game_name)
-				
+
 		if add_cover_art.get() and not game.cover_art_present:
 			print('ADDING THE GAME COVER ART HERE')
 			label_progress.configure(text = f'{PROGRESS_STATUS} Adding cover art - {game_name}')
 			#_copy_game_cover(game_full_path, covers_path, game_id, game_name)
-			
+
 		print()
-		
+
 	label_progress.configure(text = PROGRESS_STATUS)
 # *****************************************************************************************************************
 
@@ -184,14 +185,14 @@ def _merge_bin_files(game, game_name, game_full_path, cue_full_path):
 	# Create a temp directory to store the merged bin file
 	temp_game_dir = join(game_full_path, 'temp_dir')
 	if not exists(temp_game_dir):
-		try: 
+		try:
 			mkdir(temp_game_dir)
-		except OSError as error: 
-			pass  
+		except OSError as error:
+			pass
 	if exists(temp_game_dir):
 		label_progress.configure(text = f'{PROGRESS_STATUS} Merging bin files')
 		start_bin_merge(cue_full_path, game_name, temp_game_dir)
-		
+
 		# If the bin files have been merged and the new cue file has been generated
 		temp_bin_path = join(temp_game_dir, f'{game_name}.bin')
 		temp_cue_path = join(temp_game_dir, f'{game_name}.cue')
@@ -200,11 +201,11 @@ def _merge_bin_files(game, game_name, game_full_path, cue_full_path):
 			remove(cue_full_path)
 			for orginal_bin_file in game.cue_sheet.bin_files:
 				remove(orginal_bin_file.file_path)
-				
+
 			# Move the newly merged bin_file and cue_sheet back into the game directory
 			move(temp_bin_path, join(game_full_path, f'{game_name}.bin'))
 			move(temp_cue_path, join(game_full_path, f'{game_name}.cue'))
-			
+
 		rmtree(temp_game_dir)
 # *****************************************************************************************************************
 
@@ -215,7 +216,7 @@ def _rename_game(game_full_path, game_name, new_game_name):
 	original_bin_file = join(game_full_path, f'{game_name}.bin')
 	original_cue_file = join(game_full_path, f'{game_name}.cue')
 	original_cu2_file = join(game_full_path, f'{game_name}.cu2')
-	
+
 	if exists(original_bin_file):
 		# Rename bin file
 		rename(original_bin_file, join(game_full_path, f'{new_game_name}.bin'))
@@ -239,10 +240,10 @@ def _game_name_validator(game):
 	game_name = game.cue_sheet.game_name
 	if '.' in game_name:
 		game_name.replace('.', '')
-	
+
 	if len(game_name) > MAX_GAME_NAME_LENGTH:
 		game_name = game_name[:MAX_GAME_NAME_LENGTH]
-		
+
 	game.cue_sheet.new_name = game_name
 	return game_name
 # *****************************************************************************************************************
@@ -305,7 +306,7 @@ def _get_redump_name(game_id):
 	for line in game_data:
 		if line[0] == game_id:
 			game_name = line[1]
-			
+
 			# Ensure that the game name (including disc number and extension) is not more than 60 chars
 			if validate_game_name.get():
 				if int(line[2]) > 0:
@@ -392,7 +393,7 @@ def _copy_game_cover(output_path, covers_path, game_id, game_name):
 		copyfile(join(covers_path, f'{game_id}.bmp'), join(output_path, f'{game_name}.bmp'))
 	elif exists(join(covers_path, f'{game_id}.BMP')):
 		label_progress.configure(text = 'Copying game cover image...')
-		copyfile(join(covers_path, f'{game_id}.BMP'), join(output_path, f'{game_name}.BMP'))  
+		copyfile(join(covers_path, f'{game_id}.BMP'), join(output_path, f'{game_name}.BMP'))
 # *****************************************************************************************************************
 
 
@@ -401,25 +402,25 @@ def _copy_game_cover(output_path, covers_path, game_id, game_name):
 def _create_game_list(selected_path):
 	global game_list
 	game_list = []
-	
+
 	# Get all of the sub-dirs from the selected directory
 	subfolders = [f.name for f in scandir(selected_path) if f.is_dir() and not f.name.startswith('.')]
-	
+
 	# If the user has selected a single directory with no sub-dirs
 	if not (subfolders):
 		subfolders = [selected_path]
-	
+
 	for subfolder in subfolders:
 		_update_window()
-	
+
 		if subfolder != "System Volume Information":
 			game_id = None
-			
+
 			game_directory_path = join(selected_path, subfolder)
-			
+
 			# Get the cue_sheet for the game (there could be more than 1 game in the directory)
 			cue_sheets = [f for f in listdir(game_directory_path) if f.lower().endswith('.cue') and not f.startswith('.')]
-			
+
 			for cue_sheet in cue_sheets:
 				cue_sheet_path = join(game_directory_path, cue_sheet)
 				game_name_from_cue = _get_game_name_from_cue(cue_sheet_path, False)
@@ -427,15 +428,15 @@ def _create_game_list(selected_path):
 				# Check if the game directory already contains a bmp cover image
 				cover_art_path = join(game_directory_path, cue_sheet[-3])
 				cover_art_present = exists(f'{cover_art_path}bmp') or exists(f'{cover_art_path}BMP')
-				
+
 				# Check if the game directory already contains a cu2 file
 				cu2_present = exists(join(selected_path, subfolder, f'{cue_sheet[-3]}cu2'))
-				
+
 				# Try and get the unique game_id from the first bin file
 				bin_files = read_cue_file(cue_sheet_path)
 				if bin_files:
 					game_id = _get_game_id(bin_files[0].filename)
-				
+
 				# Try and get the disc number (using data from redump)
 				disc_number = 0
 				disc_collection = []
@@ -445,18 +446,18 @@ def _create_game_list(selected_path):
 
 				# Create the cue_sheet object
 				the_cue_sheet = Cuesheet(cue_sheet, cue_sheet_path, game_name_from_cue)
-				
+
 				# Add each of the bin_file objects to the cue_sheet object
 				for bin_file in bin_files:
 					the_cue_sheet.add_bin_file(Binfile(basename(bin_file.filename), bin_file.filename))
 
 				# Create the game object
 				the_game = Game(subfolder, selected_path, game_id, disc_number, disc_collection, the_cue_sheet, cover_art_present, cu2_present)
-				
+
 				# Add the game to the global game_list
 				game_list.append(the_game)
 				_print_game_details(the_game)
-				
+
 	game_list.sort(key=lambda game: game.cue_sheet.game_name, reverse=False)
 # *****************************************************************************************************************
 
@@ -468,10 +469,10 @@ def _print_game_details(game):
 	print(f'game path: {game.directory_path}')
 	print(f'game id: {game.id}')
 	print(f'disc number: {game.disc_number}')
-	
+
 	if game.disc_collection:
 		print(f'disc collection: {game.disc_collection}')
-	
+
 	print(f'game cover_art_present: {game.cover_art_present}')
 	print(f'game cu2_present: {game.cu2_present}')
 	print(f'cue_sheet file_name: {game.cue_sheet.file_name}')
@@ -495,55 +496,55 @@ def _parse_game_list():
 	multi_bin_games = []
 	invalid_named_games = []
 	unidentified_games = []
-	
+
 	multi_discs = []
 	multi_disc_games = []
-	
+
 	for game in game_list:
 		_update_window()
 		bin_files = game.cue_sheet.bin_files
 
 		if game.id is None:
 			unidentified_games.append(game)
-		
+
 		if not game.cover_art_present:
 			if game.disc_number != None:
 				if int(game.disc_number) < 2:
 					games_without_cover.append(game)
-			
+
 		if _is_multi_disc(game):
 			multi_discs.append(game)
 			if int(_get_disc_number(game.id) == 1):
 				multi_disc_games.append(game)
-			
+
 		if len(bin_files) > 1:
 			multi_bin_games.append(game)
-			
+
 		if len(game.cue_sheet.game_name) > MAX_GAME_NAME_LENGTH or '.' in game.cue_sheet.game_name:
 			invalid_named_games.append(game)
-		  
+
 	progress_bar_indeterminate.stop()
 	_update_progress_bar_2(0)
 
 	md = MessageDialog(f'''Total Discs Found: {len(game_list)} \nMulti-Disc Games: {len(multi_disc_games)} \nUnidentfied Games: {len(unidentified_games)} \nMulti-bin Games: {len(multi_bin_games)} \nMissing Covers: {len(games_without_cover)} \nInvalid Game Names: {len(invalid_named_games)}''', title='Game Details', width=650, padding=(20, 20))
 	md.show()
-	
+
 	_display_game_list()
 	_update_window()
-	
+
 	if multi_bin_games:
 		merge_bin_files.set(True)
 		force_cu2.set(True)
 	if games_without_cover:
 		add_cover_art.set(True)
 	if invalid_named_games:
-		validate_game_name.set(True)	
+		validate_game_name.set(True)
 
 	print()
 	print('multi-discs:')
 	for game in multi_discs:
 		print(game.id)
-		
+
 	print()
 	print('multi-disc games:')
 	for game in multi_disc_games:
@@ -617,20 +618,20 @@ def _update_window():
 
 
 # *****************************************************************************************************************
-# Scan button click event 
+# Scan button click event
 def _scan_button_clicked():
 	button_src_scan['state'] = 'disabled'
 	progress_bar_indeterminate.start(20)
 
 	_parse_game_list()
-	
+
 	if force_cu2.get() or merge_bin_files.get() or add_cover_art.get() or validate_game_name.get() or auto_rename.get():
 		button_start['state'] = 'normal'
 # *****************************************************************************************************************
 
 
 # *****************************************************************************************************************
-# Browse button click event 
+# Browse button click event
 def _browse_button_clicked():
 
 	# Open the fieldialog
@@ -639,7 +640,7 @@ def _browse_button_clicked():
 	# Update the label
 	src_path.set(selected_path)
 	label_src.configure(text = src_path.get())
-	
+
 	if src_path.get() is not None and src_path.get() != '':
 		button_src_scan['state'] = 'normal'
 	else:
@@ -648,7 +649,7 @@ def _browse_button_clicked():
 
 
 # *****************************************************************************************************************
-# Start button click event 
+# Start button click event
 def _start_button_clicked():
 	if not src_path.get() == '':
 		button_start['state'] = 'disabled'
@@ -658,46 +659,46 @@ def _start_button_clicked():
 
 
 # *****************************************************************************************************************
-# Checkbox change event 
+# Checkbox change event
 def _checkbox_changed():
 	global game_list
 	if not force_cu2.get() and not merge_bin_files.get() and not add_cover_art.get() and not validate_game_name.get() and not auto_rename.get():
 		button_start['state'] = 'disabled'
-	
+
 	if src_path.get() is not None and src_path.get() != '':
 		if force_cu2.get() or merge_bin_files.get() or add_cover_art.get() or validate_game_name.get() or auto_rename.get():
 			if game_list:
-				button_start['state'] = 'normal'	
+				button_start['state'] = 'normal'
 # *****************************************************************************************************************
 
 
 # *****************************************************************************************************************
 def _get_stored_theme():
 	data = None
-	with open(CONFIG_FILE_PATH) as config_file:	  
+	with open(CONFIG_FILE_PATH) as config_file:
 		data = load(config_file)
 	return data['theme']
-# ***************************************************************************************************************** 
+# *****************************************************************************************************************
 
 
 # *****************************************************************************************************************
 def _store_selected_theme(theme_name):
 	with open(CONFIG_FILE_PATH, mode="w") as config_file:
 		config_file.write(dumps({"theme": theme_name}))
-# ***************************************************************************************************************** 
+# *****************************************************************************************************************
 
 
 # *****************************************************************************************************************
 def _switch_theme(theme_name):
 	style.theme_use(theme_name)
 	_store_selected_theme(theme_name)
-# ***************************************************************************************************************** 
+# *****************************************************************************************************************
 
-	
-	
-	
-	
-	
+
+
+
+
+
 
 # *************************************************
 # Run the GUI
@@ -880,16 +881,5 @@ label_progress.after(1000, _ensure_database_exists)
 _prevent_hidden_files(window)
 
 # Loop to display/control the GUI
-window.mainloop() 
+window.mainloop()
 # *****************************************************************************************************************
-
-
-
-
-
-
-
-
-
-
-
