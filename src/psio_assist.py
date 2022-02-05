@@ -49,7 +49,7 @@ from ttkbootstrap import Checkbutton
 from game_files import Game, Cuesheet, Binfile
 from binmerge import set_binmerge_error_log_path, start_bin_merge, read_cue_file
 from cue2cu2 import set_cu2_error_log_path, start_cue2cu2
-from db import ensure_database_exists, select
+from db import ensure_database_exists, select, extract_game_cover_blob
 
 REGION_CODES = ['DTLS_', 'SCES_', 'SLES_', 'SLED_', 'SCED_', 'SCUS_', 'SLUS_', 'SLPS_', 'SCAJ_', 'SLKA_', 'SLPM_', 'SCPS_', 'SCPM_', 'PCPX_', 'PAPX_', 'PTPX_', 'LSP0_', 'LSP1_', 'LSP2_', 'LSP9_', 'SIPS_', 'ESPM_', 'SCZS_', 'SPUS_', 'PBPX_', 'LSP_']
 CURRENT_REVISION = 0.2
@@ -57,14 +57,13 @@ PROGRESS_STATUS = 'Status:'
 MAX_GAME_NAME_LENGTH = 56
 
 game_list = []
-game_data = []
-output_path = None
 covers_path = None
 
 # Get the directory paths based on the scripts location
 script_root_dir = Path(abspath(dirname(argv[0])))
-output_path = join(dirname(script_root_dir), 'output')
 covers_path = join(dirname(script_root_dir), 'covers')
+error_log_file = join(dirname(script_root_dir), 'errors.txt')
+
 CONFIG_FILE_PATH = join(script_root_dir, 'config')
 
 # Set the error log path for all of the scripts
@@ -92,34 +91,42 @@ def _process_games():
 		print(f'CUE_PATH: {cue_full_path}')
 
 		if merge_bin_files.get() and len(game.cue_sheet.bin_files) > 1:
-			print('MERGE BIN FILES HERE')
+			print('MERGING BIN FILES...')
 			label_progress.configure(text = f'{PROGRESS_STATUS} Merging bin files - {game_name}')
 			_merge_bin_files(game, game_name, game_full_path, cue_full_path)
 			start_cue2cu2(cue_full_path, f'{game_name}.bin')
 
 		if force_cu2.get() and not game.cu2_present:
-			print('GENERATE CU2 HERE')
+			print('GENERATING CU2...')
 			label_progress.configure(text = f'{PROGRESS_STATUS} Generating cu2 file - {game_name}')
 			start_cue2cu2(cue_full_path, f'{game_name}.bin')
 
 		if auto_rename.get():
-			print('RENAME THE GAME USING REDUMP NAMES HERE')
+			print('RENAMING THE GAME FILES...')
 			label_progress.configure(text = f'{PROGRESS_STATUS} Renaming - {game_name}')
 			redump_game_name = _game_name_validator(_get_redump_name(game_id))
 			_rename_game(game_full_path, game_name, redump_game_name)
 
 		if validate_game_name.get() and not auto_rename.get():
 			if len(game_name) > MAX_GAME_NAME_LENGTH or '.' in game_name:
-				print('VALIDATING THE ORIGINAL GAME NAME HERE')
+				print('VALIDATING THE GAME NAME...')
 				label_progress.configure(text = f'{PROGRESS_STATUS} Validating name - {game_name}')
 				new_game_name = _game_name_validator(game)
+				print(f'new_game_name: {new_game_name}')
 				if new_game_name != game_name:
 					_rename_game(game_full_path, game_name, new_game_name)
 
 		if add_cover_art.get() and not game.cover_art_present:
-			print('ADDING THE GAME COVER ART HERE')
+			print('ADDING THE GAME COVER ART...')
 			label_progress.configure(text = f'{PROGRESS_STATUS} Adding cover art - {game_name}')
-			#_copy_game_cover(game_full_path, covers_path, game_id, game_name)
+			_copy_game_cover(game_full_path, game_id, game_name)
+
+
+
+	#if create_multi_disc:
+
+
+
 
 		print()
 
@@ -159,26 +166,34 @@ def _merge_bin_files(game, game_name, game_full_path, cue_full_path):
 
 
 # *****************************************************************************************************************
-# Function to rename a game
+# Function to rename a game and all associated files
 def _rename_game(game_full_path, game_name, new_game_name):
 	original_bin_file = join(game_full_path, f'{game_name}.bin')
 	original_cue_file = join(game_full_path, f'{game_name}.cue')
 	original_cu2_file = join(game_full_path, f'{game_name}.cu2')
 
+	# Rename bin file
 	if exists(original_bin_file):
-		# Rename bin file
 		rename(original_bin_file, join(game_full_path, f'{new_game_name}.bin'))
+
+	# Rename cue file and edit the cue file contents to match
 	if exists(original_cue_file):
 		# Edit cue file content
 		cue_path = Path(original_cue_file)
 		cue_text = cue_path.read_text()
 		cue_text = cue_text.replace(game_name, new_game_name)
-		# Rename cue file
-		path.write_text(cue_text)
+		cue_path.write_text(cue_text)
 		rename(original_cue_file, join(game_full_path, f'{new_game_name}.cue'))
+
+	# Rename cu2 file
 	if exists(original_cu2_file):
-		# Rename cu2 file
 		rename(original_cu2_file, join(game_full_path, f'{new_game_name}.cu2'))
+
+	# Rename bmp file
+	if exists(join(game_full_path, f'{game_name}.bmp')):
+		rename(join(game_full_path, f'{game_name}.bmp'), join(game_full_path, f'{new_game_name}.bmp'))
+	if exists(join(game_full_path, f'{game_name}.BMP')):
+		rename(join(game_full_path, f'{game_name}.BMP'), join(game_full_path, f'{new_game_name}.BMP'))
 # *****************************************************************************************************************
 
 
@@ -187,7 +202,7 @@ def _rename_game(game_full_path, game_name, new_game_name):
 def _game_name_validator(game):
 	game_name = game.cue_sheet.game_name
 	if '.' in game_name:
-		game_name.replace('.', '')
+		game_name = game_name.replace('.', '_')
 
 	if len(game_name) > MAX_GAME_NAME_LENGTH:
 		game_name = game_name[:MAX_GAME_NAME_LENGTH]
@@ -223,52 +238,50 @@ def _all_game_files_exist(game):
 
 # *****************************************************************************************************************
 # Function that generates a MULTIDISC.LST file for multi-disc games
-def _generate_multidisc_file():
-	game_directories = listdir(output_path)
-	for game_dir in game_directories:
-		bin_files = [f for f in listdir(join(output_path, game_dir)) if f.endswith('.bin')]
+def _generate_multidisc_file(game_dir):
+	bin_files = [f for f in listdir(join(output_path, game_dir)) if f.endswith('.bin')]
 
-		# If there is more than 1 bin file, this should be a multi-disc game
-		multi_disc_bins = []
-		if len(bin_files) > 1:
-			for bin_file in bin_files:
-				disc_number = _get_disc_number(_get_game_id(join(output_path, game_dir, bin_file)))
-				if disc_number > 0:
-					multi_disc_bins.insert(disc_number-1, bin_file)
+	# If there is more than 1 bin file, this should be a multi-disc game
+	multi_disc_bins = []
+	if len(bin_files) > 1:
+		for bin_file in bin_files:
+			disc_number = _get_disc_number(_get_game_id(join(output_path, game_dir, bin_file)))
+			if disc_number > 0:
+				multi_disc_bins.insert(disc_number-1, bin_file)
 
-		# Create the MULTIDISC.LST file
-		if len(multi_disc_bins) > 0:
-			with open(join(output_path, game_dir, 'MULTIDISC.LST'), 'w') as multi_disc_file:
-				for count, binfile in enumerate(multi_disc_bins):
-					if count < len(multi_disc_bins)-1:
-						#multi_disc_file.write(f'{binfile}\n')
-						multi_disc_file.write(f'{binfile}\r')
-					else:
-						multi_disc_file.write(binfile)
+	# Create the MULTIDISC.LST file
+	if len(multi_disc_bins) > 0:
+		with open(join(output_path, game_dir, 'MULTIDISC.LST'), 'w') as multi_disc_file:
+			for count, binfile in enumerate(multi_disc_bins):
+				if count < len(multi_disc_bins)-1:
+					#multi_disc_file.write(f'{binfile}\n')
+					multi_disc_file.write(f'{binfile}\r')
+				else:
+					multi_disc_file.write(binfile)
 # *****************************************************************************************************************
 
 
 # *****************************************************************************************************************
 # Function to get the game name (using names from redump and the psx data-centre)
 def _get_redump_name(game_id):
-	for line in game_data:
-		if line[0] == game_id:
-			game_name = line[1]
+	response = select(f'''SELECT name FROM games WHERE game_id = "{game_id.replace('-','_')}";''')
+	if response is not None and response != []:
+		game_name = response[0][0]
 
-			# Ensure that the game name (including disc number and extension) is not more than 60 chars
-			if validate_game_name.get():
-				if int(line[2]) > 0:
-					if len(game_name) <= 47:
-						return f'{game_name} (Disc {line[2]})'
-					else:
-						return f'{game_name[:47]} (Disc {line[2]})'
+		# Ensure that the game name (including disc number and extension) is not more than 60 chars
+		if validate_game_name.get():
+			if int(line[2]) > 0:
+				if len(game_name) <= 47:
+					return f'{game_name} (Disc {line[2]})'
 				else:
-					if len(game_name) <= 47:
-						return game_name
-					else:
-						return f'{game_name[:47]}'
+					return f'{game_name[:47]} (Disc {line[2]})'
 			else:
-				return game_name
+				if len(game_name) <= 47:
+					return game_name
+				else:
+					return f'{game_name[:47]}'
+		else:
+			return game_name
 
 	return ''
 # *****************************************************************************************************************
@@ -326,22 +339,21 @@ def _get_disc_collection(bin_file_path):
 # *****************************************************************************************************************
 # Function that gets the disc number (using data from redump)
 def _get_disc_number(game_id):
-	for line in game_data:
-		if line[0] == game_id:
-			return line[2]
+	response = select(f'''SELECT disc_number FROM games WHERE game_id = "{game_id.replace('-','_')}";''')
+	if response is not None and response != []:
+		return response[0][0]
 	return 0
 # *****************************************************************************************************************
 
 
 # *****************************************************************************************************************
 # Function to copy the game front cover if it is available
-def _copy_game_cover(output_path, covers_path, game_id, game_name):
-	if exists(join(covers_path, f'{game_id}.bmp')):
-		label_progress.configure(text = 'Copying game cover image...')
-		copyfile(join(covers_path, f'{game_id}.bmp'), join(output_path, f'{game_name}.bmp'))
-	elif exists(join(covers_path, f'{game_id}.BMP')):
-		label_progress.configure(text = 'Copying game cover image...')
-		copyfile(join(covers_path, f'{game_id}.BMP'), join(output_path, f'{game_name}.BMP'))
+def _copy_game_cover(output_path, game_id, game_name):
+	response = select(f'''SELECT id FROM covers WHERE game_id = "{game_id.replace('-','_')}";''')
+	if response is not None and response != []:
+		row_id = response[0][0]
+		image_out_path = join(output_path, f'{game_name}.bmp')
+		extract_game_cover_blob(row_id, image_out_path)
 # *****************************************************************************************************************
 
 
@@ -374,7 +386,7 @@ def _create_game_list(selected_path):
 				game_name_from_cue = _get_game_name_from_cue(cue_sheet_path, False)
 
 				# Check if the game directory already contains a bmp cover image
-				cover_art_path = join(game_directory_path, cue_sheet[-3])
+				cover_art_path = join(game_directory_path, cue_sheet[:-3])
 				cover_art_present = exists(f'{cover_art_path}bmp') or exists(f'{cover_art_path}BMP')
 
 				# Check if the game directory already contains a cu2 file
@@ -462,7 +474,7 @@ def _parse_game_list():
 
 		if _is_multi_disc(game):
 			multi_discs.append(game)
-			if int(_get_disc_number(game.id) == 1):
+			if int(game.disc_number) == 1:
 				multi_disc_games.append(game)
 
 		if len(bin_files) > 1:
@@ -497,7 +509,31 @@ def _parse_game_list():
 	print('multi-disc games:')
 	for game in multi_disc_games:
 		print(game.id)
+
+	_poo()
 # *****************************************************************************************************************
+
+
+
+
+
+# *****************************************************************************************************************
+def _poo():
+
+	print()
+	print('checking for multi-disc games...\n')
+
+	for game in game_list:
+		if int(game.disc_number) == 1:
+			print(f'game id: {game.id}')
+			print(f'game name: {game.cue_sheet.game_name}')
+			print(f'game disc: {game.disc_number}')
+			print(f'game collection: {game.disc_collection}')
+
+# *****************************************************************************************************************
+
+
+
 
 
 # *****************************************************************************************************************

@@ -40,7 +40,7 @@ def select(select_query):
 		cursor.execute(select_query)
 		rows = cursor.fetchall()
 		cursor.close()
-	except sqlite3.Error as error:
+	except Error as error:
 		pass
 	finally:
 		if conn:
@@ -61,6 +61,39 @@ def _create_connection(db_file):
 
 	return conn
 # *****************************************************************************************************************
+
+
+
+
+
+
+# **********************************************************************************************************************
+def extract_game_cover_blob(row_id, image_out_path):
+	try:
+		conn = _create_connection(DATABASE_FULL_PATH)
+		cursor = conn.cursor()
+
+		with open(image_out_path, 'wb') as output_file:
+		    cursor.execute(f'SELECT psio FROM covers WHERE id = {row_id};')
+		    ablob = cursor.fetchone()
+		    output_file.write(ablob[0])
+
+		cursor.close()
+	except Error as error:
+		print(error)
+		pass
+	finally:
+		if conn:
+			conn.close()
+ # **********************************************************************************************************************
+
+
+
+
+
+
+
+
 
 
 # *****************************************************************************************************************

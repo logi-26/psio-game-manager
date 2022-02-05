@@ -132,10 +132,13 @@ def _merge_files(merged_filename, files):
 # **********************************************************************************************************
 # Function to log basic error messages to a file
 def _log_error(error_type, error_message):
-	print(f'{error_type}: {error_message}')
 	if error_log_path is not None:
-		with open(error_log_path, 'a') as error_log_file:
-			error_log_file.write(f'[{error_type}]: {error_message}\n')
+		try:
+			with open(error_log_path, 'a+') as error_log_file:
+				error_log_file.write(f'[{error_type}]: {error_message}\n')
+		except IOError:
+			with open(error_log_path, 'w') as error_log_file:
+				error_log_file.write(f'[{error_type}]: {error_message}\n')
 # **********************************************************************************************************
 
 
@@ -160,17 +163,16 @@ def read_cue_file(cue_path):
 		if m:
 			this_path = join(dirname(cue_path), m.group(1))
 			file_available = (isfile(this_path) or access(this_path, R_OK))
-			
+
 			if not file_available:
 				this_path = join(dirname(cue_path), m.group(1).replace(' (Track 01)', ''))
 				file_available = (isfile(this_path) or access(this_path, R_OK))
 				if not file_available:
 					this_path = join(dirname(cue_path), m.group(1).replace(' (Track 1)', ''))
 					file_available = (isfile(this_path) or access(this_path, R_OK))
-			
+
 			if not file_available:
-				print(f'file not available: {line}')
-				bin_files_missing = True		
+				bin_files_missing = True
 			else:
 				this_file = File(this_path)
 				files.append(this_file)
@@ -189,7 +191,9 @@ def read_cue_file(cue_path):
 			continue
 
 	if bin_files_missing:
-		raise BinFilesMissingException
+		#raise BinFilesMissingException
+		_log_error('ERROR', f'file does not exist: {line}')
+		return []
 
 	if len(files) == 1:
 		# only 1 file, assume splitting, calc sectors of each
@@ -204,7 +208,6 @@ def read_cue_file(cue_path):
 
 # **********************************************************************************************************
 def start_bin_merge(cuefile, game_name, outdir):
-
 	cue_map = read_cue_file(cuefile)
 	cuesheet = _gen_merged_cuesheet(game_name, cue_map)
 
@@ -222,6 +225,6 @@ def start_bin_merge(cuefile, game_name, outdir):
 
 	with open(new_cue_fn, 'w', newline='\r\n') as f:
 		f.write(cuesheet)
-	
+
 	return True
 # **********************************************************************************************************

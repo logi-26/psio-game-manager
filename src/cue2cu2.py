@@ -6,13 +6,13 @@
 # WWW: https://github.com/NRGDEAD/Cue2cu2
 
 # Copyright 2019-2020 NRGDEAD
-# 
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-# 
+#
 #	  http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -97,7 +97,7 @@ def _convert_filesize_to_sectors(binaryfile):
 def _timecode_addition(timecode, offset):
 	result = _convert_timecode_to_sectors(timecode) + _convert_timecode_to_sectors(offset)
 	if result > int('449999'):
-		result = int('449999') 
+		result = int('449999')
 	return _convert_sectors_to_timecode(result)
 # **********************************************************************************************************
 
@@ -106,8 +106,12 @@ def _timecode_addition(timecode, offset):
 # Function to log basic error messages to a file
 def _log_error(error_type, error_message):
 	if error_log_path is not None:
-		with open(error_log_path, 'a') as error_log_file:
-			error_log_file.write(f'[{error_type}]: {error_message}\n')
+		try:
+			with open(error_log_path, 'a+') as error_log_file:
+				error_log_file.write(f'[{error_type}]: {error_message}\n')
+		except IOError:
+			with open(error_log_path, 'w') as error_log_file:
+				error_log_file.write(f'[{error_type}]: {error_message}\n')
 # **********************************************************************************************************
 
 
@@ -124,7 +128,7 @@ def set_cu2_error_log_path(log_path):
 # **********************************************************************************************************
 def start_cue2cu2(cuesheet, binaryfile_name):
 	# Hardcoded for CU2 revision 2
-	format_revision = int(2) 
+	format_revision = int(2)
 
 	# Copy the cue sheet into an array so we don't have to re-read it from disk again and can navigate it easily
 	try:
@@ -134,7 +138,7 @@ def start_cue2cu2(cuesheet, binaryfile_name):
 	except:
 		_log_error('ERROR', f'Could not open {str(cuesheet)}')
 		return False
-		
+
 	# Check the cue sheet if the image is supposed to be in Mode 2 with 2352 bytes per sector
 	for line in cuesheet_content:
 		cuesheet_mode_valid = bool(False)
@@ -144,42 +148,42 @@ def start_cue2cu2(cuesheet, binaryfile_name):
 	if cuesheet_mode_valid == False: # If it's not, we can't continue
 		_log_error('ERROR', f'Cue sheet {str(cuesheet)} indicates this image is not in MODE2/2352')
 		return False
-		
+
 	bin_path = str(Path(cuesheet).parent)
 	binaryfile = join(bin_path, binaryfile_name)
 	output = str()
-	
+
 	# Get number of tracks from cue sheet
 	ntracks = 0
 	for line in cuesheet_content:
 		if compile('[ \t]*[Tt][Rr][Aa][Cc][Kk].*').match(line) and not compile('[ \t]*[Ff][Ii][Ll][Ee].*[Tt][Rr][Aa][Cc][Kk].*').match(line):
 			ntracks += 1
 	output = f'{output}ntracks {str(ntracks)}\r\n'
-	
+
 	sectors = _convert_filesize_to_sectors(binaryfile)
-	
+
 	if sectors is None:
 		return False
-	
+
 	# Get the total runtime/size
 	size = _convert_sectors_to_timecode(sectors)
 	output = f'{output}size	   {size}\r\n'
-	
+
 	# Get data1 - well, this is always the same for our kind of disc images, so...
 	# At some point I should do this the proper way and grab it from Track 1.
 	data1 = _timecode_addition('00:00:00','00:02:00')
 	output = f'{output}data1	   {data1}\r\n'
-	
+
 	# Get the track and pregap lengths
-	pregap_command_used_before = bool(False) 
-	for track in range(2, ntracks+1): 
+	pregap_command_used_before = bool(False)
+	for track in range(2, ntracks+1):
 		# Find current track number in cuesheet_content
 		current_track_in_cuesheet = -1;
 		for line in cuesheet_content:
 			current_track_in_cuesheet += 1
 			if compile(f'.*[Tt][Rr][Aa][Cc][Kk] 0?{str(track)}.*').match(line):
 				break
-		
+
 		# See if the next line is index 00, and if so, get and output the pregap if the CU2 format requires it
 		if compile('.*[Ii][Nn][Dd][Ee][Xx] 0?0.*').match(cuesheet_content[current_track_in_cuesheet+1]) and format_revision == int(2):
 			pregap_position = cuesheet_content[current_track_in_cuesheet+1][::-1][:8][::-1][:9]
@@ -187,7 +191,7 @@ def start_cue2cu2(cuesheet, binaryfile_name):
 			# Add the famous two second offset for PSIO and convert to alternative notation used by Systems Console for tracks
 			pregap_position = _convert_sectors_to_timecode_with_alternative_notation(_convert_timecode_to_sectors(_timecode_addition(pregap_position,"00:02:00")))
 			output = f'{output}pregap{str(track).zfill(2)}	{pregap_position}\r\n'
-			
+
 		# Check if this cue sheet uses the PREGAP command, which is bad. We can continue, but...
 		elif compile('.*[Pp][Rr][Ee][Gg][Aa][Pp].*').match(cuesheet_content[current_track_in_cuesheet+1]) and format_revision == int(2):
 			if pregap_command_used_before == False:
@@ -197,15 +201,15 @@ def start_cue2cu2(cuesheet, binaryfile_name):
 				_log_error('WARNING', f'The PREGAP command is also used for track {str(track)}.')
 			if compile('.*[Ii][Nn][Dd][Ee][Xx] 0?1.*').match(cuesheet_content[current_track_in_cuesheet+2]):
 				pregap_position = cuesheet_content[current_track_in_cuesheet+2][::-1][:8][::-1][:9]
-				
+
 				# Add the famous two second offset for PSIO and convert to alternative notation used by Systems Console for tracks
 				pregap_position = _convert_sectors_to_timecode_with_alternative_notation(_convert_timecode_to_sectors(_timecode_addition(pregap_position,"00:02:00")))
 				output = f'{output}pregap{str(track).zfill(2)}	{pregap_position}\r\n'
-				
+
 		elif format_revision == int(2):
 			_log_error('ERROR', f'Could not find pregap position (index 00) for track {str(track)} in cue sheet: {str(cuesheet)}')
 			return False
-		
+
 		# Else-If is it index 01? If so, output track start, or get it from the following line
 		if compile('.*[Ii][Nn][Dd][Ee][Xx] 0?1.*').match(cuesheet_content[current_track_in_cuesheet+1]):
 			track_position = cuesheet_content[current_track_in_cuesheet+1][::-1][:8][::-1][:9] # I have no idea what I'm doing
@@ -214,7 +218,7 @@ def start_cue2cu2(cuesheet, binaryfile_name):
 		else:
 			_log_error('ERROR', f'Could not find starting position (index 01) for track {str(track)} in cue sheet: {str(cuesheet)}')
 			return False
-		
+
 		# Add the famous two second offset for PSIO and convert to alternative notation used by Systems Console for tracks
 		track_position = _convert_sectors_to_timecode_with_alternative_notation(_convert_timecode_to_sectors(_timecode_addition(track_position,"00:02:00")))
 		output = f'{output}track{str(track).zfill(2)}	{track_position}\r\n'
@@ -236,10 +240,10 @@ def start_cue2cu2(cuesheet, binaryfile_name):
 	except:
 		_log_error('ERROR', f'Could not write to: {str(cu2sheet)}')
 		return False
-		
+
 	# Remove the original CUE file if the CU2 file has been generated
 	if exists(cu2sheet):
 		remove(cuesheet)
-		
+
 	return True
 # **********************************************************************************************************
