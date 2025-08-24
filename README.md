@@ -23,17 +23,18 @@ https://github.com/putnam/binmerge<br/>
 **cue2cu2**<br/>
 https://github.com/NRGDEAD/Cue2cu2
 
+## Windows Users
+There is a Windows exe file in the src/dist directory.<br/>
+You will also need the "data" file that contains the database files.<br/>
+
+## Notes
+For best performance, use the application with your games are stored on a PC HDD/SSD and then transfer to SD card.<br/>
+SD card read/write speeds are a lot slower, if you have a lot of multi-bin games the process can take a lot longer.
 
 ## Dependencies
 This project requires Python 3 and the following Python packages:
 - `ttkbootstrap`
 - `pathlib2`
-
-
-## Windows Users
-There is a Windows exe file in the src/dist directory.
-You will also need the "data" file that contains the database files
-
 
 ### Installation Steps for running the Python scripts
 1. **Install Python 3**:
@@ -89,8 +90,3 @@ You will also need the "data" file that contains the database files
    - OPTIONAL: Select to rename all games using the game names from the PlayStation Redump project.
    - Click on the **Start** button to process the games.
    - The progress bar will display the progress of the application.
-
-
-## Notes
-For best performance, use this application whilst your games are stored on a PC HDD/SSD and then transfer to SD card.
-SD card read/write speeds are a lot slower, if you have a lot of multi-bin games the process can take a lot longer.
