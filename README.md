@@ -29,7 +29,8 @@ You will also need the "data" folder that contains the database files.<br/>
 
 ## Notes
 For best performance, use the application with your games stored on a PC HDD/SSD and then transfer to an SD card.<br/>
-SD card read/write speeds are a lot slower, if you have a lot of multi-bin games the process can take a lot longer.
+SD card read/write speeds are a lot slower, if you have a lot of multi-bin games the process can take a lot longer.<br/><br/>
+The application uses the games cue sheet to identify the games. If your game does not have a .cue file it will not be detected.
 
 ## Dependencies
 This project requires Python 3 and the following Python packages:
