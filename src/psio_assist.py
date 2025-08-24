@@ -154,10 +154,14 @@ class PSIOGameAssistant:
             if redump_rename:
                 debug_print('RENAMING THE GAME FILES USING REDUMP...')
                 self.label_progress.configure(text=f'{self.PROGRESS_STATUS} Renaming - {game_name}')
-                redump_game_name = self._game_name_validator(self._get_redump_name(game_id))
+
+                redump_game_name = self._get_redump_name(game_id)
                 debug_print(f'Redump Game Name: {redump_game_name}')
-                self._rename_game(game, redump_game_name)
-                game_name = redump_game_name
+
+                if redump_game_name is not None and redump_game_name != "":
+                    redump_name = self._game_name_validator(redump_game_name)
+                    self._rename_game(game, redump_name)
+                    game_name = redump_name
 
             if len(game_name) > self.MAX_GAME_NAME_LENGTH or '.' in game_name:
                 debug_print('FIXING THE GAME NAME...')
@@ -193,10 +197,11 @@ class PSIOGameAssistant:
     def _generate_multidisc_files(self):
         """Generate MULTIDISC.LST file for all multi-disc games"""
 
-        debug_print('\nGENERATING MULTI-DISC FILES...\n')
+        multi_disc_games = [game for game in self.game_list if game.disc_number > 0]
+        if len(multi_disc_games) > 0:
+            debug_print('\nGENERATING MULTI-DISC FILES...\n')
 
         for game in self.game_list:
-            
             # Find the first disc in a collection that has no multi-disc configured
             if game.disc_number == 1 and not game.multi_disc_file_present:
                 
@@ -256,7 +261,7 @@ class PSIOGameAssistant:
     # *****************************************************************************************************************
     def _copy_multi_disc_cover_art(self, disc_1: Game, multi_games):
 
-        debug_print("CHECKING COVER ART FOR MULTI-DISC GAMES...")
+        debug_print("CHECKING COVER ART FOR MULTI-DISC GAME...")
 
         if disc_1.cover_art_present:
             disc_1_bmp_path = join(disc_1.directory_path, disc_1.directory_name, f"{disc_1.cue_sheet.game_name}.bmp")
