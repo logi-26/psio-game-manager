@@ -804,8 +804,11 @@ class PSIOGameAssistant:
 
     def _get_stored_theme(self):
         """Get stored theme from config"""
-        with open(self.CONFIG_FILE_PATH) as config_file:
-            return load(config_file)['theme']
+        if exists(self.CONFIG_FILE_PATH):
+            with open(self.CONFIG_FILE_PATH) as config_file:
+                return load(config_file)['theme']
+        else:
+            return "superhero"
 
     def _store_selected_theme(self, theme_name):
         """Store selected theme"""
