@@ -24,10 +24,12 @@
 #
 #  This code has been modified by LoGi26 (2021) for use with the psio-assist script
 
-
-from re import search, match
-from os import access, R_OK
+from os import access, R_OK, name
 from os.path import exists, join, dirname, isfile, getsize
+from re import search, match
+from typing import List, Union
+from shutil import copyfileobj
+import subprocess
 
 # Global variables
 error_log_path = None
@@ -109,23 +111,54 @@ def _gen_merged_cuesheet(basename, files):
 
 
 # **********************************************************************************************************
-# Merges files together to new file `merged_filename`, in listed order.
-def _merge_files(merged_filename, files):
-	if exists(merged_filename):
-		_log_error('ERROR', f'Target merged bin path already exists: {merged_filename}')
-		return False
+def _merge_files(merged_filename: str, files: List[Union[str, object]], use_native: bool = True, memory_merge: bool = False) -> bool:
+    """Merge multiple binary files into a single output file"""
 
-	# cat is actually a bit faster, but this is multi-platform and no special-casing
-	chunksize = 1024 * 1024
-	with open(merged_filename, 'wb') as outfile:
-		for f in files:
-			with open(f.filename, 'rb') as infile:
-				while True:
-					chunk = infile.read(chunksize)
-					if not chunk:
-						break
-					outfile.write(chunk)
-	return True
+    # Validate target file
+    if exists(merged_filename):
+        print(f"Error: Target merged file already exists: {merged_filename}")
+        raise FileExistsError(f"Target merged file already exists: {merged_filename}")
+
+    # Validate and collect file paths
+    file_paths = []
+    for f in files:
+        path = f.filename if hasattr(f, 'filename') else f
+        if not isfile(path):
+            print(f"Error: Input file does not exist or is not a file: {path}")
+            raise FileNotFoundError(f"Input file does not exist or is not a file: {path}")
+        file_paths.append(path)
+
+    try:
+        if use_native:
+            # Use native OS commands for fastest merging
+            if name == 'nt':  # Windows
+                cmd = 'copy /b ' + ' + '.join(f'"{path}"' for path in file_paths) + f' "{merged_filename}"'
+                subprocess.run(cmd, shell=True, check=True)
+            else:  # Unix/Linux/macOS
+                cmd = ['cat'] + file_paths + ['>', merged_filename]
+                subprocess.run(' '.join(cmd), shell=True, check=True)
+        else:
+            # Fallback to memory-based or file-based merging
+            if memory_merge:
+                # Pre-read all files into memory (fast for small audio tracks)
+                data = bytearray()
+                for file_path in file_paths:
+                    with open(file_path, 'rb') as infile:
+                        data.extend(infile.read())
+                with open(merged_filename, 'wb') as outfile:
+                    outfile.write(data)
+            else:
+                # Sequential merging with shutil (faster than chunk-based)
+                with open(merged_filename, 'wb') as outfile:
+                    for file_path in file_paths:
+                        with open(file_path, 'rb') as infile:
+                            copyfileobj(infile, outfile)
+
+        return True
+
+    except (subprocess.CalledProcessError, IOError, OSError) as e:
+        print(f"Error merging files: {e}")
+        return False
 # **********************************************************************************************************
 
 
