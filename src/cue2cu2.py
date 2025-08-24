@@ -241,9 +241,5 @@ def start_cue2cu2(cuesheet, binaryfile_name):
 		_log_error('ERROR', f'Could not write to: {str(cu2sheet)}')
 		return False
 
-	# Remove the original CUE file if the CU2 file has been generated
-	if exists(cu2sheet):
-		remove(cuesheet)
-
 	return True
 # **********************************************************************************************************
