@@ -25,10 +25,10 @@ https://github.com/NRGDEAD/Cue2cu2
 
 ## Windows Users
 There is a Windows exe file in the src/dist directory.<br/>
-You will also need the "data" file that contains the database files.<br/>
+You will also need the "data" folder that contains the database files.<br/>
 
 ## Notes
-For best performance, use the application with your games are stored on a PC HDD/SSD and then transfer to SD card.<br/>
+For best performance, use the application with your games stored on a PC HDD/SSD and then transfer to an SD card.<br/>
 SD card read/write speeds are a lot slower, if you have a lot of multi-bin games the process can take a lot longer.
 
 ## Dependencies
