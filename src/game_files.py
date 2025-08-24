@@ -1,7 +1,7 @@
 
 # *****************************************************************************************************************
 class Game:
-	def __init__(self, directory_name, directory_path, game_id, disc_number, disc_collection, cue_sheet, cover_art_present, cu2_present):
+	def __init__(self, directory_name, directory_path, game_id, disc_number, disc_collection, cue_sheet, cover_art_present, cu2_present, cu2_required, multi_disc_file_present):
 		self.directory_name = directory_name
 		self.directory_path = directory_path
 		self.id = game_id
@@ -10,6 +10,8 @@ class Game:
 		self.cue_sheet = cue_sheet
 		self.cover_art_present = cover_art_present
 		self.cu2_present = cu2_present
+		self.cu2_required = cu2_required
+		self.multi_disc_file_present = multi_disc_file_present
 		
 	def set_new_directory_name(self, new_name):
 		self.directory_name = new_name
