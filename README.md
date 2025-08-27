@@ -13,7 +13,7 @@ Organises and standardises PlayStation 1 games into a format acceptable by the P
 - Adds game cover images for games that do not have them.<br/>
 - Ensures that game names are not greater than 60 characters and do not contain periods or slashes.<br/>
 - Generates the MULTIDISC.LST file for mult-disc games and organises them into a single directory.<br/>
-- Does not modify the original bin/cue files.<br/>
+- Does not modify the original bin/cue files (except when merging multi-bin files into a single bin).<br/>
 - OPTIONAL: Rename all games using the game names from the PlayStation Redump project.<br/>
 
 ## Info
