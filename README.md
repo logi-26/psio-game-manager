@@ -21,7 +21,7 @@ This application uses the following Python scripts, which have been custom modif
 **binmerge**<br/>
 https://github.com/putnam/binmerge<br/>
 **cue2cu2**<br/>
-https://github.com/NRGDEAD/Cue2cu2<br/><br/>
+https://github.com/NRGDEAD/Cue2cu2<br/>
 
 This application has Python PPF patching functions that where based on this C code:<br/>
 **ppf**<br/>
