@@ -1,8 +1,12 @@
 '''
 Sqlite3 database functions
+The application uses a local Sqlite3 database to store game names and game cover art
+
+The local database file has been split into 4 seperate files in the repo
+This is due to the 100MB file size limit in GitHub
+The application will merge the split database files into a single file when it is launched
 '''
 
-# System imports
 from sys import argv, exit
 from os import remove
 from os.path import exists, join, abspath, dirname
@@ -17,8 +21,8 @@ DATABASE_FULL_PATH = join(DATABASE_PATH, DATABASE_FILE)
 
 
 # *****************************************************************************************************************
-# Function that ensures the database file exists and has been merged
 def ensure_database_exists():
+	"""Ensures that the database file exists and has been merged into a single file"""
 	if not exists(DATABASE_FULL_PATH):
 		if _database_splits_exist():
 			_merge_database()
@@ -32,7 +36,54 @@ def ensure_database_exists():
 
 
 # *****************************************************************************************************************
+def _database_splits_exist():
+	"""Checks if each of the database split-files exist"""
+	for i in range(1,5):
+		if not exists(join(DATABASE_PATH, f'psio_assist_{i}.db')):
+			return False
+	if not exists(join(DATABASE_PATH, 'fs_manifest.csv')):
+		return False
+	return True
+# *****************************************************************************************************************
+
+
+# *****************************************************************************************************************
+def _merge_database():
+	"""Merge the split database files into a single file"""
+	fs = Filesplit()
+	fs.merge(input_dir=DATABASE_PATH)
+	_delete_database_splits()
+# *****************************************************************************************************************
+
+
+# *****************************************************************************************************************
+def _delete_database_splits():
+	"""Delete the database split-files"""
+	for i in range(1,5):
+		if exists(join(DATABASE_PATH, f'psio_assist_{i}.db')):
+			remove(join(DATABASE_PATH, f'psio_assist_{i}.db'))
+	if exists(join(DATABASE_PATH, DATABASE_MANIFEST_FILE)):
+		remove(join(DATABASE_PATH, DATABASE_MANIFEST_FILE))
+# *****************************************************************************************************************
+
+
+# *****************************************************************************************************************
+def _create_connection(db_file):
+	"""Establish a connection with the local Sqlite3 database"""
+	conn = None
+	try:
+		conn = connect(db_file)
+		return conn
+	except Error as error:
+		print(error)
+
+	return conn
+# *****************************************************************************************************************
+
+
+# *****************************************************************************************************************
 def select(select_query):
+	"""Select data from the local database"""
 	rows = []
 	try:
 		conn = _create_connection(DATABASE_FULL_PATH)
@@ -50,33 +101,17 @@ def select(select_query):
 # *****************************************************************************************************************
 
 
-# *****************************************************************************************************************
-def _create_connection(db_file):
-	conn = None
-	try:
-		conn = connect(db_file)
-		return conn
-	except Error as error:
-		print(error)
-
-	return conn
-# *****************************************************************************************************************
-
-
-
-
-
-
 # **********************************************************************************************************************
 def extract_game_cover_blob(row_id, image_out_path):
+	"""Extract the game cover art data from the local database"""
 	try:
 		conn = _create_connection(DATABASE_FULL_PATH)
 		cursor = conn.cursor()
 
 		with open(image_out_path, 'wb') as output_file:
-		    cursor.execute(f'SELECT psio FROM covers WHERE id = {row_id};')
-		    ablob = cursor.fetchone()
-		    output_file.write(ablob[0])
+			cursor.execute(f'SELECT psio FROM covers WHERE id = {row_id};')
+			ablob = cursor.fetchone()
+			output_file.write(ablob[0])
 
 		cursor.close()
 	except Error as error:
@@ -86,43 +121,3 @@ def extract_game_cover_blob(row_id, image_out_path):
 		if conn:
 			conn.close()
  # **********************************************************************************************************************
-
-
-
-
-
-
-
-
-
-
-# *****************************************************************************************************************
-# Function that checks if each of the database split-files exist
-def _database_splits_exist():
-	for i in range(1,5):
-		if not exists(join(DATABASE_PATH, f'psio_assist_{i}.db')):
-			return False
-	if not exists(join(DATABASE_PATH, 'fs_manifest.csv')):
-		return False
-	return True
-# *****************************************************************************************************************
-
-
-# *****************************************************************************************************************
-# Function that deletes the database split-files
-def _delete_database_splits():
-	for i in range(1,5):
-		if exists(join(DATABASE_PATH, f'psio_assist_{i}.db')):
-			remove(join(DATABASE_PATH, f'psio_assist_{i}.db'))
-	if exists(join(DATABASE_PATH, DATABASE_MANIFEST_FILE)):
-		remove(join(DATABASE_PATH, DATABASE_MANIFEST_FILE))
-# *****************************************************************************************************************
-
-
-# *****************************************************************************************************************
-# Function that merges the split database files
-def _merge_database():
-	fs = Filesplit()
-	fs.merge(input_dir=DATABASE_PATH)
-	_delete_database_splits()
-# *****************************************************************************************************************
