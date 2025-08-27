@@ -17,11 +17,15 @@ Organises and standardises PlayStation 1 games into a format acceptable by the P
 - OPTIONAL: Rename all games using the game names from the PlayStation Redump project.<br/>
 
 ## Info
-This uses the following scripts:<br/>
+This application uses the following Python scripts, which have been custom modified for psio-assist:<br/>
 **binmerge**<br/>
 https://github.com/putnam/binmerge<br/>
 **cue2cu2**<br/>
-https://github.com/NRGDEAD/Cue2cu2
+https://github.com/NRGDEAD/Cue2cu2<br/><br/>
+
+This application has Python PPF patching functions that where based on this C code:<br/>
+**ppf**<br/>
+https://github.com/meunierd/ppf
 
 ## Windows Users
 There is a Windows exe file in the src/dist directory.<br/>
