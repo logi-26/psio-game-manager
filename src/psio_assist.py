@@ -61,8 +61,8 @@ from ttkbootstrap.constants import DISABLED
 from game_files import Game, Cuesheet, Binfile
 from binmerge import set_binmerge_error_log_path, start_bin_merge, read_cue_file
 from cue2cu2 import set_cu2_error_log_path, start_cue2cu2
-from ppf_patcher import open_files, ppf_version, apply_ppf1_patch, apply_ppf2_patch, apply_ppf3_patch
-from db import ensure_database_exists, select, extract_game_cover_blob
+from ppf_patcher import open_files_for_patching, ppf_version, apply_ppf1_patch, apply_ppf2_patch, apply_ppf3_patch
+from db import ensure_database_exists, select, extract_game_cover_blob, extract_game_libcrypt_patch_blob
 
 DEBUG_MODE = True
 
@@ -146,8 +146,7 @@ class PSIOGameAssistant:
                 bin_path = cue_full_path[:-4] + ".bin"
                 if exists(bin_path):
                     game.cue_sheet.bin_files = []
-                    bin_file = Binfile(f"{game_name}.bin", bin_path)
-                    game.cue_sheet.add_bin_file(bin_file)
+                    game.cue_sheet.add_bin_file(Binfile(f"{game_name}.bin", bin_path))
 
             # Generate CU2 file for games with CCDA audio
             if game.cu2_required and not game.cu2_present:
@@ -159,7 +158,7 @@ class PSIOGameAssistant:
                 if exists(cu2_path):
                     game.cu2_present = True
 
-            # rename the game using the game name from the Redump project
+            # Rename the game using the game name from the Redump project
             if redump_rename:
                 debug_print('RENAMING THE GAME FILES USING REDUMP...')
                 self.label_progress.configure(text=f'{self.PROGRESS_STATUS} Renaming - {game_name}')
@@ -185,12 +184,45 @@ class PSIOGameAssistant:
             if not game.cover_art_present:
                 debug_print('ADDING THE GAME COVER ART...')
                 self.label_progress.configure(text=f'{self.PROGRESS_STATUS} Adding cover art - {game_name}')
+                
+                # Get the game cover art from the database and copy it to the local directory
                 game_full_path = join(game.directory_path, game.directory_name)
                 self._copy_game_cover(game_full_path, game_id, game_name)
 
                 # If the game cover has been copied, update the game object cover details
                 if exists(join(game_full_path, f'{game_name}.bmp')):
                     game.cover_art_present = True
+            
+            # Apply LibCrypt PPF patch
+            if game.libcrypt_required:
+                if self._libcrypt_patch_available(game.id):
+                    debug_print('PATCHING BIN FILE...')
+                    
+                    # Get the LibCrypt PPF patch from the database and copy it to the local directory
+                    game_full_path = join(game.directory_path, game.directory_name)
+                    self._copy_libcrypt_patch(game_full_path, game.id)
+
+                    bin_path = game.cue_sheet.bin_files[0].file_path
+                    ppf_path = f"{join(game.directory_path, game.directory_name, game.id)}.ppf" 
+
+                    print(f"bin_path: {bin_path}")
+                    print(f"ppf_path: {ppf_path}")
+
+                    # If the PPF patch file has been copied, patch the BIN file
+                    if exists(ppf_path):
+                        bin_file, ppf_file = open_files_for_patching(bin_path, ppf_path)
+
+                        print("Applying patch...")
+                        with bin_file, ppf_file:
+                            version = ppf_version(ppf_file)
+                            if version == 1:
+                                apply_ppf1_patch(ppf_file, bin_file)
+                            elif version == 2:
+                                apply_ppf2_patch(ppf_file, bin_file)
+                            elif version == 3:
+                                apply_ppf3_patch(ppf_file, bin_file)
+                        
+                        # Delete the PPF patch file after it has been applied to the BIN file
 
             debug_print('***********************************************************\n')
 
@@ -398,13 +430,16 @@ class PSIOGameAssistant:
 
 
     # *****************************************************************************************************************
-    # THIS NEEDS MODIFYING!!!
-    # IF THERE ARE ANY MULTI-DISC GAMES IN A SINGLE DIRECTORY THIS WILL DELETE ALL OTHER DISC WHILST RENAMING THE GAME
-    # THIS NEEDS MODIFYING TO SUPPORT MULTI-DISC GAMES WITH LST FILES
     def _rename_game(self, game: Game, new_game_name: str):
         """Rename game and associated files"""
 
+        # Get the current game name from the CUE file
         game_name = game.cue_sheet.game_name
+
+        # If the game name has not changed
+        if game_name == new_game_name:
+            return
+
         game_full_path = join(game.directory_path, game.directory_name)
 
         # Get the original file paths
@@ -507,18 +542,6 @@ class PSIOGameAssistant:
 
 
     # *****************************************************************************************************************
-    def _get_redump_name(self, game_id: str):
-        """Get the game name using names from Redump and the PSX Data-Centre stored in a local database file"""
-        response = select(f'''SELECT name FROM games WHERE game_id = "{game_id.replace('-','_')}";''')
-        if response is not None and response != []:
-            game_name = response[0][0]
-            return game_name
-
-        return ''
-    # *****************************************************************************************************************
-
-
-    # *****************************************************************************************************************
     def _get_game_name_from_cue(self, cue_path: str, include_track=False):
         """Get game name from the cue sheet"""
         cue_content = read_cue_file(cue_path)
@@ -587,21 +610,60 @@ class PSIOGameAssistant:
 
 
     # *****************************************************************************************************************
+    def _get_redump_name(self, game_id: str):
+        """Get the game name using names from Redump and the PSX Data-Centre stored in a local database file"""
+        response = select(f'''SELECT name FROM games WHERE game_id = "{game_id.replace('-','_')}";''')
+        if response is not None and response != []:
+            game_name = response[0][0]
+            return game_name
+
+        return ''
+    # *****************************************************************************************************************
+
+
+    # *****************************************************************************************************************
     def _get_disc_number(self, game_id: str):
-        """Get disc number from redump database"""
+        """Get the disc number from the local database"""
         response = select(f'''SELECT disc_number FROM games WHERE game_id = "{game_id.replace('-','_')}";''')
         return response[0][0] if response and response != [] else 0
     # *****************************************************************************************************************
 
 
     # *****************************************************************************************************************
+    def _get_libcrypt_status(self, game_id: str):
+        """Get the libcrypt status from local database"""
+        response = select(f'''SELECT libcrypt FROM games WHERE game_id = "{game_id.replace('-','_')}";''')
+        return response[0][0] if response and response != [] else 0
+    # *****************************************************************************************************************
+
+
+    # *****************************************************************************************************************
+    def _libcrypt_patch_available(self, game_id: str) -> bool:
+        """Check if there is a LibCrypt PPF patch available in the local database"""
+        response = select(f'''SELECT id FROM libcrypt_patches WHERE game_id = "{game_id.replace('-','_')}";''')
+        return True if response and response != [] else False
+    # *****************************************************************************************************************
+
+
+    # *****************************************************************************************************************
     def _copy_game_cover(self, output_path: str, game_id: str, game_name: str):
-        """Copy the game front cover art if it is available in the local database file"""
+        """Copy the game front cover art if it is available in the local database"""
         response = select(f'''SELECT id FROM covers WHERE game_id = "{game_id.replace('-','_')}";''')
         if response and response != []:
             row_id = response[0][0]
             image_out_path = join(output_path, f'{game_name}.bmp')
             extract_game_cover_blob(row_id, image_out_path)
+    # *****************************************************************************************************************
+
+
+    # *****************************************************************************************************************
+    def _copy_libcrypt_patch(self, output_path: str, game_id: str):
+        """Copy the LibCrypt PPF patch file if it is available in the local database"""
+        response = select(f'''SELECT id FROM libcrypt_patches WHERE game_id = "{game_id.replace('-','_')}";''')
+        if response and response != []:
+            row_id = response[0][0]
+            ppf_out_path = join(output_path, f'{game_id}.ppf')
+            extract_game_libcrypt_patch_blob(row_id, ppf_out_path)
     # *****************************************************************************************************************
 
 
@@ -657,12 +719,19 @@ class PSIOGameAssistant:
                     if bin_files:
                         game_id = self._get_game_id(bin_files[0].filename)
 
-                    # Get the disc number and compose a disc-collection if the disc is part of a multi-disc game
+                    # Get the disc number
                     disc_number = 0
-                    disc_collection = []
                     if game_id:
                         disc_number = self._get_disc_number(game_id)
-                        disc_collection = self._get_disc_collection(join(game_directory_path, f'{game_name_from_cue}.bin'))
+                    
+                    # Get the disc-collection if the disc is part of a multi-disc game
+                    disc_collection = []
+                    disc_collection = self._get_disc_collection(join(game_directory_path, f'{game_name_from_cue}.bin'))
+
+                    # Get the libcrypt status
+                    libcrypt_required = False
+                    if game_id:
+                        libcrypt_required = self._get_libcrypt_status(game_id)
 
                     # Create a Cuesheet object and a list of Bin file objects to associate with the Game object
                     the_cue_sheet = Cuesheet(cue_sheet, cue_sheet_path, game_name_from_cue)
@@ -670,7 +739,7 @@ class PSIOGameAssistant:
                         the_cue_sheet.add_bin_file(Binfile(basename(bin_file.filename), bin_file.filename))
 
 					# Create the Game object
-                    the_game = Game(subfolder, selected_path, game_id, disc_number, disc_collection, the_cue_sheet, cover_art_present, cu2_present, cu2_required, multi_disc_file_present)
+                    the_game = Game(subfolder, selected_path, game_id, disc_number, disc_collection, the_cue_sheet, cover_art_present, cu2_present, cu2_required, multi_disc_file_present, libcrypt_required)
 
                     # Add the Game object to the game list
                     self.game_list.append(the_game)
@@ -793,14 +862,22 @@ class PSIOGameAssistant:
             name_valid = bools[len(game.cue_sheet.game_name) <= self.MAX_GAME_NAME_LENGTH and '.' not in game.cue_sheet.game_name]
             cu2_present = bools[game.cu2_present] if game.cu2_required else "N/A"
 
+            # Check if the games is a multi-disc game and if an LST file is available
             lst_present = "N/A"
             if game.disc_number > 0:
                 lst_present = "yes" if game.multi_disc_file_present else "No"
 
+            # Check if the cover art is available
             bmp_present = bools[game.cover_art_present]
-            
+
+            # Check if the game requires LibCrypt patching and if a patch is available
+            libcrypt_patch_available = "N/A"
+            if game.libcrypt_required:
+                libcrypt_patch_available = "Yes" if self._libcrypt_patch_available(game.id) else "No"
+
+            # Insert the data into the tree-view
             self.treeview_game_list.insert(parent='', index=count, iid=count, text='',
-                                        values=(game_id, game_name, disc_number, number_of_bins, name_valid, cu2_present, lst_present, bmp_present))
+                                        values=(game_id, game_name, disc_number, number_of_bins, name_valid, cu2_present, lst_present, bmp_present, libcrypt_patch_available))
     # *****************************************************************************************************************
 
 
@@ -912,8 +989,11 @@ class PSIOGameAssistant:
     # *****************************************************************************************************************
     def setup_gui(self):
         """Setup the GUI"""
+        window_width = 1000
+        window_height = 660
+
         self.window = Window(title=f'PSIO Game Assistant v{self.CURRENT_REVISION}',
-                               themename=self._get_stored_theme(), size=[800,660], resizable=[False, False])
+                               themename=self._get_stored_theme(), size=[window_width, window_height], resizable=[False, False])
         
         # Initialise Tkinter variables
         self.src_path = StringVar(self.window)
@@ -943,29 +1023,29 @@ class PSIOGameAssistant:
         menubar.add_cascade(label="Help", menu=help_menu, underline=0)
 
         # Browse frame
-        browse_frame = Labelframe(self.window, text='SD Root', bootstyle="primary")
-        browse_frame.place(x=15, y=10, width=770, height=110)
+        browse_frame = Labelframe(self.window, text='Root Directory', bootstyle="primary")
+        browse_frame.place(x=15, y=10, width=window_width -30, height=window_height -550)
         
         self.label_src = Label(self.window, text=self.src_path.get(), width=60, borderwidth=2, relief='solid', bootstyle="primary", font=("Arial", 11))
-        self.label_src.place(x=30, y=35, width=600, height=30)
+        self.label_src.place(x=30, y=35, width=window_width -200, height=window_height -630)
         
         button_src_browse = Button(self.window, text='Browse', bootstyle="primary", command=self._browse_button_clicked)
-        button_src_browse.place(x=640, y=35, width=130, height=30)
+        button_src_browse.place(x=840, y=35, width=window_width -870, height=window_height -630)
         
         self.progress_bar_indeterminate = Floodgauge(font=(None, 14, 'bold'), mask='', mode='indeterminate')
-        self.progress_bar_indeterminate.place(x=30, y=75, width=600, height=30)
+        self.progress_bar_indeterminate.place(x=30, y=75, width=window_width -200, height=window_height -630)
         
         self.button_src_scan = Button(self.window, text='Scan', command=self._scan_button_clicked, state=DISABLED)
-        self.button_src_scan.place(x=640, y=75, width=130, height=30)
+        self.button_src_scan.place(x=840, y=75, width=window_width -870, height=window_height -630)
 
         # Game list frame
         game_list_frame = Labelframe(self.window, text='Files', bootstyle="primary")
-        game_list_frame.place(x=15, y=140, width=770, height=350)
+        game_list_frame.place(x=15, y=140, width=window_width -30, height=window_height -310)
         
         self.treeview_game_list = Treeview(self.window, bootstyle='primary')
         self.treeview_game_list.bind("<Button-1>", self._on_treeview_click)
 
-        self.treeview_game_list['columns'] = ('ID', 'Name', 'Disc', 'Bin Files', 'Name Valid', 'CU2', 'LST', 'BMP')
+        self.treeview_game_list['columns'] = ('ID', 'Name', 'Disc', 'Bin Files', 'Name Valid', 'CU2', 'LST', 'BMP', 'LibCrypt')
         self.treeview_game_list.column('#0', width=0, stretch=NO)
         self.treeview_game_list.column('ID', anchor=CENTER, width=75)
         self.treeview_game_list.column('Name', anchor=CENTER, width=330)
@@ -975,6 +1055,7 @@ class PSIOGameAssistant:
         self.treeview_game_list.column('CU2', anchor=CENTER, width=40)
         self.treeview_game_list.column('LST', anchor=CENTER, width=40)
         self.treeview_game_list.column('BMP', anchor=CENTER, width=40)
+        self.treeview_game_list.column('LibCrypt', anchor=CENTER, width=40)
         
         self.treeview_game_list.heading('#0', text='', anchor=CENTER)
         self.treeview_game_list.heading('ID', text='ID', anchor=CENTER)
@@ -985,34 +1066,35 @@ class PSIOGameAssistant:
         self.treeview_game_list.heading('CU2', text='CU2', anchor=CENTER)
         self.treeview_game_list.heading('LST', text='LST', anchor=CENTER)
         self.treeview_game_list.heading('BMP', text='BMP', anchor=CENTER)
+        self.treeview_game_list.heading('LibCrypt', text='LibCrypt', anchor=CENTER)
         
         scrollbar_game_list = Scrollbar(self.window, bootstyle="primary-round", orient=VERTICAL, 
                                       command=self.treeview_game_list.yview)
         
         self.treeview_game_list.configure(yscroll=scrollbar_game_list.set)
-        self.treeview_game_list.place(x=30, y=160, width=730, height=310)
-        scrollbar_game_list.place(x=760, y=160, height=310)
+        self.treeview_game_list.place(x=30, y=160, width=window_width -70, height=window_height -350)
+        scrollbar_game_list.place(x=960, y=160, height=window_height -350)
 
         # Cover art frame
         self.cover_art_frame = Labelframe(self.window, text='BMP', bootstyle="primary")
-        self.cover_art_frame.place(x=15, y=510, width=130, height=130)
+        self.cover_art_frame.place(x=15, y=510, width=window_width -870, height=window_height -530)
         
         # Process frame
         progress_frame = Labelframe(self.window, text='Process Files', bootstyle="primary")
 
-        progress_frame.place(x=170, y=510, width=615, height=130)
+        progress_frame.place(x=170, y=510, width=window_width -185, height=window_height -530)
 
         Checkbutton(self.window, text='Redump Rename', bootstyle="round-toggle", takefocus=0, 
                    variable=self.redump_rename, command=self._checkbox_changed).place(x=190, y=540)
         
         self.progress_bar = Floodgauge(font=(None, 14, 'bold'), mask='', mode='determinate')
-        self.progress_bar.place(x=190, y=570, width=440, height=30)
+        self.progress_bar.place(x=190, y=570, width=window_width -360, height=window_height -630)
 
         self.button_start = Button(self.window, text='Start', command=self._start_button_clicked, state=DISABLED)
-        self.button_start.place(x=640, y=570, width=130, height=30)
+        self.button_start.place(x=840, y=570, width=window_width -870, height=window_height -630)
         
         self.label_progress = Label(self.window, text=self.PROGRESS_STATUS, width=120, bootstyle="primary")
-        self.label_progress.place(x=190, y=605, width=550, height=30)
+        self.label_progress.place(x=190, y=605, width=window_width -450, height=window_height -630)
         
         self.label_progress.after(1000, ensure_database_exists)
 

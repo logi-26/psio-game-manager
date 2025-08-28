@@ -9,7 +9,7 @@ UNDO = 2
 
 # *****************************************************************************************************************
 # Opens BIN/ISO and PPF files, returning file objects
-def open_files(bin_path: str, ppf_path: str):
+def open_files_for_patching(bin_path: str, ppf_path: str):
     
     # Open BIN/ISO in read/write binary mode
     print(f"Opening bin file: {bin_path}")
