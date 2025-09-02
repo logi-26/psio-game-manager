@@ -62,7 +62,8 @@ from game_files import Game, Cuesheet, Binfile
 from binmerge import set_binmerge_error_log_path, start_bin_merge, read_cue_file
 from cue2cu2 import set_cu2_error_log_path, start_cue2cu2
 from ppf_patcher import open_files_for_patching, ppf_version, apply_ppf1_patch, apply_ppf2_patch, apply_ppf3_patch
-from db import ensure_database_exists, select, extract_game_cover_blob, extract_game_libcrypt_patch_blob
+from db import ensure_database_exists, get_redump_name, get_disc_number, get_libcrypt_status, libcrypt_patch_available, copy_game_cover, copy_libcrypt_patch
+
 
 DEBUG_MODE = True
 
@@ -71,9 +72,12 @@ def debug_print(the_string: str):
         print(the_string)
 
 class PSIOGameAssistant:
-    REGION_CODES = ['DTLS_', 'SCES_', 'SLES_', 'SLED_', 'SCED_', 'SCUS_', 'SLUS_', 'SLPS_', 'SCAJ_', 'SLKA_',
-                   'SLPM_', 'SCPS_', 'SCPM_', 'PCPX_', 'PAPX_', 'PTPX_', 'LSP0_', 'LSP1_', 'LSP2_', 'LSP9_', 
-                   'SIPS_', 'ESPM_', 'SCZS_', 'SPUS_', 'PBPX_', 'LSP_']
+    REGION_CODES = ['DTLS_', 'SCES_', 'SLES_', 'SLED_', 'SCED_', 'SCUS_',
+                    'SLUS_', 'SLPS_', 'SCAJ_', 'SLKA_','SLPM_', 'SCPS_',
+                    'SCPM_', 'PCPX_', 'PAPX_', 'PTPX_', 'LSP0_', 'LSP1_',
+                    'LSP2_', 'LSP9_', 'SIPS_', 'ESPM_', 'SCZS_', 'SPUS_',
+                    'PBPX_', 'LSP_']
+
     CURRENT_REVISION = 0.3
     PROGRESS_STATUS = 'Status:'
     MAX_GAME_NAME_LENGTH = 56
@@ -206,7 +210,7 @@ class PSIOGameAssistant:
             debug_print('RENAMING THE GAME FILES USING REDUMP...')
             self.label_progress.configure(text=f'{self.PROGRESS_STATUS} Renaming - {game_name}')
 
-            redump_game_name = self._get_redump_name(game_id)
+            redump_game_name = get_redump_name(game_id)
             debug_print(f'Redump Game Name: {redump_game_name}')
 
             if redump_game_name is not None and redump_game_name != "":
@@ -242,7 +246,7 @@ class PSIOGameAssistant:
 
             # Get the game cover art from the database and copy it to the local directory
             game_full_path = join(game.directory_path, game.directory_name)
-            self._copy_game_cover(game_full_path, game_id, game_name)
+            copy_game_cover(game_full_path, game_id, game_name)
 
             # If the game cover has been copied, update the game object cover details
             if exists(join(game_full_path, f'{game_name}.bmp')):
@@ -255,12 +259,12 @@ class PSIOGameAssistant:
         """Apply LibCrypt PPF patch"""
 
         if game.libcrypt_required:
-            if self._libcrypt_patch_available(game.id):
+            if libcrypt_patch_available(game.id):
                 debug_print('PATCHING BIN FILE...')
 
                 # Get the LibCrypt PPF patch from the database and copy it to the local directory
                 game_full_path = join(game.directory_path, game.directory_name)
-                self._copy_libcrypt_patch(game_full_path, game.id)
+                copy_libcrypt_patch(game_full_path, game.id)
 
                 bin_path = game.cue_sheet.bin_files[0].file_path
                 ppf_path = f"{join(game.directory_path, game.directory_name, game.id)}.ppf"
@@ -664,64 +668,6 @@ class PSIOGameAssistant:
 
 
     # ************************************************************************************
-    def _get_redump_name(self, game_id: str):
-        """Get the game name using names from Redump and the PSX Data-Centre stored in a local database file"""
-        response = select(f'''SELECT name FROM games WHERE game_id = "{game_id.replace('-','_')}";''')
-        if response is not None and response != []:
-            game_name = response[0][0]
-            return game_name
-
-        return ''
-    # ************************************************************************************
-
-
-    # ************************************************************************************
-    def _get_disc_number(self, game_id: str):
-        """Get the disc number from the local database"""
-        response = select(f'''SELECT disc_number FROM games WHERE game_id = "{game_id.replace('-','_')}";''')
-        return response[0][0] if response and response != [] else 0
-    # ************************************************************************************
-
-
-    # ************************************************************************************
-    def _get_libcrypt_status(self, game_id: str):
-        """Get the libcrypt status from local database"""
-        response = select(f'''SELECT libcrypt FROM games WHERE game_id = "{game_id.replace('-','_')}";''')
-        return response[0][0] if response and response != [] else 0
-    # ************************************************************************************
-
-
-    # ************************************************************************************
-    def _libcrypt_patch_available(self, game_id: str) -> bool:
-        """Check if there is a LibCrypt PPF patch available in the local database"""
-        response = select(f'''SELECT id FROM libcrypt_patches WHERE game_id = "{game_id.replace('-','_')}";''')
-        return True if response and response != [] else False
-    # ************************************************************************************
-
-
-    # ************************************************************************************
-    def _copy_game_cover(self, output_path: str, game_id: str, game_name: str):
-        """Copy the game front cover art if it is available in the local database"""
-        response = select(f'''SELECT id FROM covers WHERE game_id = "{game_id.replace('-','_')}";''')
-        if response and response != []:
-            row_id = response[0][0]
-            image_out_path = join(output_path, f'{game_name}.bmp')
-            extract_game_cover_blob(row_id, image_out_path)
-    # ************************************************************************************
-
-
-    # ************************************************************************************
-    def _copy_libcrypt_patch(self, output_path: str, game_id: str):
-        """Copy the LibCrypt PPF patch file if it is available in the local database"""
-        response = select(f'''SELECT id FROM libcrypt_patches WHERE game_id = "{game_id.replace('-','_')}";''')
-        if response and response != []:
-            row_id = response[0][0]
-            ppf_out_path = join(output_path, f'{game_id}.ppf')
-            extract_game_libcrypt_patch_blob(row_id, ppf_out_path)
-    # ************************************************************************************
-
-
-    # ************************************************************************************
     def _create_game_list(self, selected_path: str):
         """Create global game list"""
         self.game_list = []
@@ -776,7 +722,7 @@ class PSIOGameAssistant:
                     # Get the disc number
                     disc_number = 0
                     if game_id:
-                        disc_number = self._get_disc_number(game_id)
+                        disc_number = get_disc_number(game_id)
 
                     # Get the disc-collection if the disc is part of a multi-disc game
                     disc_collection = []
@@ -785,7 +731,7 @@ class PSIOGameAssistant:
                     # Get the libcrypt status
                     libcrypt_required = False
                     if game_id:
-                        libcrypt_required = self._get_libcrypt_status(game_id)
+                        libcrypt_required = get_libcrypt_status(game_id)
 
                     # Create a Cuesheet object and a list of Bin file objects to associate with the Game object
                     the_cue_sheet = Cuesheet(cue_sheet, cue_sheet_path, game_name_from_cue)
@@ -925,13 +871,13 @@ class PSIOGameAssistant:
             bmp_present = bools[game.cover_art_present]
 
             # Check if the game requires LibCrypt patching and if a patch is available
-            libcrypt_patch_available = "N/A"
+            patch_available = "N/A"
             if game.libcrypt_required:
-                libcrypt_patch_available = "Yes" if self._libcrypt_patch_available(game.id) else "No"
+                patch_available = "Yes" if libcrypt_patch_available(game.id) else "No"
 
             # Insert the data into the tree-view
             self.treeview_game_list.insert(parent='', index=count, iid=count, text='',
-                                        values=(game_id, game_name, disc_number, number_of_bins, name_valid, cu2_present, lst_present, bmp_present, libcrypt_patch_available))
+                                        values=(game_id, game_name, disc_number, number_of_bins, name_valid, cu2_present, lst_present, bmp_present, patch_available))
     # ************************************************************************************
 
 
