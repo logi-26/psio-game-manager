@@ -185,7 +185,11 @@ def copy_game_cover(output_path: str, game_id: str, game_name: str):
     response = select(f'''SELECT id FROM covers WHERE game_id = "{game_id.replace('-','_')}";''')
     if response and response != []:
         row_id = response[0][0]
+        
         image_out_path = join(output_path, f'{game_name}.bmp')
+        
+        print(f"\nimage_out_path: {image_out_path}\n")
+        
         _extract_game_cover_blob(row_id, image_out_path)
 # ************************************************************************************
 

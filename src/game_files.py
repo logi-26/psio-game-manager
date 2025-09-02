@@ -1,3 +1,6 @@
+'''
+Classes for the Game object, Cuesheet object, and Binfile object.
+'''
 
 # ************************************************************************************
 class Game:

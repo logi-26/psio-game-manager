@@ -43,7 +43,7 @@
 
 # System imports
 from sys import argv
-from os import listdir, scandir, mkdir, makedirs, remove
+from os import listdir, scandir, mkdir, remove
 from os.path import exists, join, dirname, basename, splitext, abspath, isfile
 from time import sleep
 from json import load, dumps
@@ -109,8 +109,6 @@ class PSIOGameAssistant:
         # GUI elements
         self.label_progress = None
         self.progress_bar = None
-        self.progress_bar_indeterminate = None
-        self.button_src_scan = None
         self.button_start = None
         self.treeview_game_list = None
         self.label_src = None
@@ -161,6 +159,8 @@ class PSIOGameAssistant:
 
         # Update the game list in the GUI
         self._display_game_list()
+
+        debug_print('Processing finished!\n')
     # ************************************************************************************
 
 
@@ -215,8 +215,9 @@ class PSIOGameAssistant:
 
             if redump_game_name is not None and redump_game_name != "":
                 redump_name = self._game_name_validator(redump_game_name)
+                
+                debug_print(f'Validated Redump Game Name: {redump_name}')
                 self._rename_game(game, redump_name)
-                game_name = redump_name
     # ************************************************************************************
 
 
@@ -250,7 +251,7 @@ class PSIOGameAssistant:
 
             # If the game cover has been copied, update the game object cover details
             if exists(join(game_full_path, f'{game_name}.bmp')):
-                game.get_cover_art_present(True)
+                game.set_cover_art_present(True)
     # ************************************************************************************
 
 
@@ -269,9 +270,6 @@ class PSIOGameAssistant:
                 bin_path = game.get_cue_sheet().get_bin_files()[0].get_file_path()
                 ppf_path = f"{join(game.get_directory_path(), game.get_directory_name(), game.get_id())}.ppf"
 
-                print(f"bin_path: {bin_path}")
-                print(f"ppf_path: {ppf_path}")
-
                 # If the PPF patch file has been copied, patch the BIN file
                 if exists(ppf_path):
                     bin_file, ppf_file = open_files_for_patching(bin_path, ppf_path)
@@ -287,7 +285,7 @@ class PSIOGameAssistant:
                             apply_ppf3_patch(ppf_file, bin_file)
 
                     # Delete the PPF patch file after it has been applied to the BIN file
-
+                    remove(ppf_path)
     # ************************************************************************************
 
 
@@ -305,6 +303,9 @@ class PSIOGameAssistant:
             # Find the first disc in a collection that has no multi-disc configured
             if game.get_disc_number() == 1 and not game.get_multi_disc_file_present():
 
+                debug_print(f'Game name: {game.get_cue_sheet().get_game_name()}')
+                debug_print(f'Game disc collection: {game.get_disc_collection()}')
+
                 # Get each game from the collection
                 multi_games = []
                 for game_id in game.get_disc_collection():
@@ -314,30 +315,34 @@ class PSIOGameAssistant:
                 if len(multi_games) > 1:
                     # Create the multi-disc folder to hold the game collection
                     game_folder = self._remove_disc_from_name(multi_games[0].get_cue_sheet().get_game_name())
-                    game_path = join(multi_games[0].get_directory_path(), game_folder)
-                    makedirs(game_path, exist_ok=True)
+                    new_game_path = join(multi_games[0].get_directory_path(), game_folder)
+                    debug_print(f'\nCreating multi-disc folder: {new_game_path}')
+                    mkdir(new_game_path)
 
-                    # Process each game in the collection
-                    for multi_disc in multi_games:
-                        game_path = join(multi_disc.get_directory_path(), multi_disc.get_directory_name())
+                    if exists(new_game_path):
+                        # Process each game in the collection
+                        for multi_disc in multi_games:
+                            disc_path = join(multi_disc.get_directory_path(), multi_disc.get_directory_name())
 
-                        # Move all of the files for the disc into the multi-disc directory
-                        for filename in listdir(game_path):
-                            source_path = join(game_path, filename)
-                            target_path = join(game_path, filename)
-                            file_no_ext = splitext(filename)[0]
+                            debug_print(f'disc_path: {disc_path}')
 
-                            # Move the file
-                            self._move_file(source_path, target_path)
+                            # Move all of the files for the disc into the multi-disc directory
+                            for filename in listdir(disc_path):
+                                source_path = join(disc_path, filename)
+                                target_path = join(new_game_path, filename)
+                                file_no_ext = splitext(filename)[0]
 
-                        # Update the game paths
-                        self._update_game_paths(multi_disc, game_path, game_folder, file_no_ext)
+                                # Move the file
+                                self._move_file(source_path, target_path)
 
-                        # Remove the original game directory
-                        rmtree(game_path)
+                            # Update the game paths
+                            self._update_game_paths(multi_disc, new_game_path, game_folder, file_no_ext)
 
-                # Generate LST file
-                self._generate_lst_file(multi_games)
+                            # Remove the original game directory
+                            rmtree(disc_path)
+
+                    # Generate LST file
+                    self._generate_lst_file(multi_games)
 
                 # Ensure that each disc in the collection has cover art available.
                 self._copy_multi_disc_cover_art(game, multi_games)
@@ -347,7 +352,7 @@ class PSIOGameAssistant:
     # ************************************************************************************
     def _update_game_paths(self, multi_disc: Game, game_path: str, game_folder: str, file_no_ext: str):
         """Update Game object paths"""
-        multi_disc.set_new_directory_name(game_folder)
+        multi_disc.set_directory_name(game_folder)
 
         bin_path = join(game_path, f"{file_no_ext}.bin")
         cue_path = join(game_path, f"{file_no_ext}.cue")
@@ -526,6 +531,8 @@ class PSIOGameAssistant:
         if game_name == new_game_name:
             return
 
+        debug_print(f'Renaming game from "{game_name}" to "{new_game_name}"')
+
         game_full_path = join(game.get_directory_path(), game.get_directory_name())
 
         # Get the original file paths
@@ -535,8 +542,11 @@ class PSIOGameAssistant:
         original_bmp_file = join(game_full_path, f'{game_name}.bmp')
 
         # Create new directory for the game
-        new_filepath = join(dirname(dirname(game_full_path)), new_game_name)
-        makedirs(new_filepath, exist_ok=True)
+        new_filepath = join(dirname(game_full_path), new_game_name)
+        mkdir(new_filepath)
+        if not exists(new_filepath):
+            print(f"Error creating directory: {new_filepath}")
+            return
 
         # Move/rename the bin file
         if exists(original_bin_file):
@@ -558,15 +568,15 @@ class PSIOGameAssistant:
         if exists(original_bmp_file):
             move(original_bmp_file, join(new_filepath, f'{new_game_name}.bmp'))
 
-        # Delete the original game directory
-        rmtree(game_full_path, ignore_errors=True)
-
         # Update the game objects paths
-        game.set_new_directory_name(new_game_name)
+        game.set_directory_name(new_game_name)
         game.get_cue_sheet().set_game_name(new_game_name)
         game.get_cue_sheet().get_bin_files()[0].set_file_path(join(new_filepath, f'{new_game_name}.bin'))
         game.get_cue_sheet().set_file_name(f'{new_game_name}.cue')
         game.get_cue_sheet().set_file_path(join(new_filepath, f'{new_game_name}.cue'))
+
+        # Delete the original game directory
+        rmtree(game_full_path, ignore_errors=True)
     # ************************************************************************************
 
 
@@ -801,11 +811,6 @@ class PSIOGameAssistant:
     # ************************************************************************************
     def _print_game_details(self, game: Game):
         """Print game details for debugging"""
-
-        print(f"type (game): {type(game)}")
-        print(f"type (game): {type(game.get_directory_path())}")
-        print(f"type (game): {type(game.get_directory_name())}")
-
         game_path = join(game.get_directory_path(), game.get_directory_name())
         debug_print(f'Game Path: {game_path}')
         debug_print(f'Game ID: {game.get_id()}')
@@ -823,6 +828,8 @@ class PSIOGameAssistant:
     # ************************************************************************************
     def _load_image(self, image_path: str):
         """Load and display the BMP image"""
+        print()
+        '''
         for widget in self.cover_art_frame.winfo_children():
             widget.destroy()
 
@@ -838,6 +845,7 @@ class PSIOGameAssistant:
 
         except (OSError, FileNotFoundError) as e:
             debug_print(e)
+        '''
     # ************************************************************************************
 
 
@@ -883,14 +891,12 @@ class PSIOGameAssistant:
             if len(game.get_cue_sheet().get_game_name()) > self.MAX_GAME_NAME_LENGTH or '.' in game.get_cue_sheet().get_game_name():
                 invalid_named_games +=1
 
-        self.progress_bar_indeterminate.stop()
-        self._update_progress_bar_2(0)
-
         # Display a message dialog box showing the counts
-        md = MessageDialog(
-            f'''Total Discs Found: {len(self.game_list)} \nMulti-Disc Games: {multi_disc_games} \nUnidentfied Games: {unidentified_games} \nMulti-bin Games: {multi_bin_games} \nMissing Covers: {games_without_cover} \nInvalid Game Names: {invalid_named_games}''',
-            title='Game Details', width=650, padding=(20, 20))
-        md.show()
+        if DEBUG_MODE:
+            md = MessageDialog(
+                f'''Total Discs Found: {len(self.game_list)} \nMulti-Disc Games: {multi_disc_games} \nUnidentified Games: {unidentified_games} \nMulti-bin Games: {multi_bin_games} \nMissing Covers: {games_without_cover} \nInvalid Game Names: {invalid_named_games}''',
+                title='Game Details', width=650, padding=(20, 20))
+            md.show()
 
         self._display_game_list()
         self._update_window()
@@ -913,10 +919,10 @@ class PSIOGameAssistant:
             disc_number = game.get_disc_number()
             number_of_bins = len(game.get_cue_sheet().get_bin_files())
             name_valid = bools[len(game.get_cue_sheet().get_game_name()) <= self.MAX_GAME_NAME_LENGTH and '.' not in game.get_cue_sheet().get_game_name()]
-            cu2_present = bools[game.get_cu2_present()] if game.get_cu2_required() else "N/A"
+            cu2_present = bools[game.get_cu2_present()] if game.get_cu2_required() else "*"
 
             # Check if the games is a multi-disc game and if an LST file is available
-            lst_present = "N/A"
+            lst_present = "*"
             if game.get_disc_number() > 0:
                 lst_present = "yes" if game.get_multi_disc_file_present() else "No"
 
@@ -924,13 +930,13 @@ class PSIOGameAssistant:
             bmp_present = bools[game.get_cover_art_present()]
 
             # Check if the game requires LibCrypt patching and if a patch is available
-            patch_available = "N/A"
+            patch_available = "*"
             if game.get_libcrypt_required():
                 patch_available = "Yes" if libcrypt_patch_available(game.get_id()) else "No"
 
             # Insert the data into the tree-view
             self.treeview_game_list.insert(parent='', index=count, iid=count, text='',
-                                        values=(game_id, game_name, disc_number, number_of_bins, name_valid, cu2_present, lst_present, bmp_present, patch_available))
+                                        values=(game_id, game_name, disc_number, number_of_bins, name_valid, bmp_present, cu2_present, lst_present, patch_available))
     # ************************************************************************************
 
 
@@ -978,32 +984,19 @@ class PSIOGameAssistant:
             self.window.update()
         sleep(0.1)
 
-    def _update_progress_bar_2(self, value):
-        """Update the indeterminate progress bar"""
-        self.progress_bar_indeterminate['value'] = value
-        if self.window:
-            self.window.update()
-        sleep(0.1)
-
     def _update_window(self):
         """Update the main UI window"""
         if self.window:
             self.window.update()
         sleep(0.02)
 
-    def _scan_button_clicked(self):
-        """Handle scan button click"""
-        self.button_src_scan['state'] = 'disabled'
-        self.progress_bar_indeterminate.start(20)
-        self._parse_game_list()
-        self.button_start['state'] = 'normal'
-
     def _browse_button_clicked(self):
         """Handle browse button click"""
         selected_path = filedialog.askdirectory(initialdir='/', title='Select Game Directory')
         self.src_path.set(selected_path)
         self.label_src.configure(text= f"  {self.src_path.get()}")
-        self.button_src_scan['state'] = 'normal' if self.src_path.get() else 'disabled'
+        self._parse_game_list()
+        self.button_start['state'] = 'normal'
 
     def _start_button_clicked(self):
         """Handle start button click"""
@@ -1014,10 +1007,7 @@ class PSIOGameAssistant:
 
     def _checkbox_changed(self):
         """Handle checkbox change"""
-        if not any([self.redump_rename.get()]):
-            self.button_start['state'] = 'disabled'
-        elif self.src_path.get() and self.game_list:
-            self.button_start['state'] = 'normal'
+        self.redump_rename.set(True if self.redump_rename.get() else False)
 
     def _get_stored_theme(self):
         """Get stored theme from config"""
@@ -1043,7 +1033,7 @@ class PSIOGameAssistant:
     def setup_gui(self):
         """Setup the GUI"""
         window_width = 1000
-        window_height = 660
+        window_height = 800
 
         self.window = Window(title=f'PSIO Game Assistant v{self.CURRENT_REVISION}',
                                themename=self._get_stored_theme(), size=[window_width, window_height], resizable=[False, False])
@@ -1076,60 +1066,54 @@ class PSIOGameAssistant:
         menubar.add_cascade(label="Help", menu=help_menu, underline=0)
 
         # Browse frame
-        self.gui_browse_frame(window_width, window_height)
+        self.gui_browse_frame(window_width)
 
         # Game list frame
-        self.gui_game_list_frame(window_width, window_height)
+        self.gui_game_list_frame(window_width)
 
         # Cover art frame
-        self.gui_cover_art_frame(window_width, window_height)
+        #self.gui_cover_art_frame(window_width, window_height)
 
         # Process frame
-        self.gui_process_frame(window_width, window_height)
+        self.gui_process_frame(window_width)
 
         self._prevent_hidden_files()
     # ************************************************************************************
 
 
     # ************************************************************************************
-    def gui_browse_frame(self, window_width: int, window_height: int):
+    def gui_browse_frame(self, window_width: int):
         """Create the browse frame"""
         browse_frame = Labelframe(self.window, text='Root Directory', bootstyle="primary")
-        browse_frame.place(x=15, y=10, width=window_width -30, height=window_height -550)
+        browse_frame.place(x=15, y=10, width=window_width -30, height=70)
 
         self.label_src = Label(self.window, text=self.src_path.get(), width=60, borderwidth=2, relief='solid', bootstyle="primary", font=("Arial", 11))
-        self.label_src.place(x=30, y=35, width=window_width -200, height=window_height -630)
+        self.label_src.place(x=30, y=35, width=window_width -200, height=30)
 
         button_src_browse = Button(self.window, text='Browse', bootstyle="primary", command=self._browse_button_clicked)
-        button_src_browse.place(x=840, y=35, width=window_width -870, height=window_height -630)
-
-        self.progress_bar_indeterminate = Floodgauge(font=(None, 14, 'bold'), mask='', mode='indeterminate')
-        self.progress_bar_indeterminate.place(x=30, y=75, width=window_width -200, height=window_height -630)
-
-        self.button_src_scan = Button(self.window, text='Scan', command=self._scan_button_clicked, state=DISABLED)
-        self.button_src_scan.place(x=840, y=75, width=window_width -870, height=window_height -630)
+        button_src_browse.place(x=840, y=35, width=window_width -870, height=30)
     # ************************************************************************************
 
 
     # ************************************************************************************
-    def gui_game_list_frame(self, window_width: int, window_height: int):
+    def gui_game_list_frame(self, window_width: int):
         """Create the game list frame"""
-        game_list_frame = Labelframe(self.window, text='Files', bootstyle="primary")
-        game_list_frame.place(x=15, y=140, width=window_width -30, height=window_height -310)
+        game_list_frame = Labelframe(self.window, text='Games', bootstyle="primary")
+        game_list_frame.place(x=15, y=100, width=window_width -30, height=450)
 
         self.treeview_game_list = Treeview(self.window, bootstyle='primary')
         self.treeview_game_list.bind("<Button-1>", self._on_treeview_click)
 
-        self.treeview_game_list['columns'] = ('ID', 'Name', 'Disc', 'Bin Files', 'Name Valid', 'CU2', 'LST', 'BMP', 'LibCrypt')
+        self.treeview_game_list['columns'] = ('ID', 'Name', 'Disc', 'Bin Files', 'Name Valid', 'BMP', 'CU2', 'LST', 'LibCrypt')
         self.treeview_game_list.column('#0', width=0, stretch=NO)
         self.treeview_game_list.column('ID', anchor=CENTER, width=75)
         self.treeview_game_list.column('Name', anchor=CENTER, width=330)
         self.treeview_game_list.column('Disc', anchor=CENTER, width=60)
         self.treeview_game_list.column('Bin Files', anchor=CENTER, width=60)
         self.treeview_game_list.column('Name Valid', anchor=CENTER, width=75)
+        self.treeview_game_list.column('BMP', anchor=CENTER, width=40)
         self.treeview_game_list.column('CU2', anchor=CENTER, width=40)
         self.treeview_game_list.column('LST', anchor=CENTER, width=40)
-        self.treeview_game_list.column('BMP', anchor=CENTER, width=40)
         self.treeview_game_list.column('LibCrypt', anchor=CENTER, width=40)
 
         self.treeview_game_list.heading('#0', text='', anchor=CENTER)
@@ -1138,17 +1122,17 @@ class PSIOGameAssistant:
         self.treeview_game_list.heading('Disc', text='Disc', anchor=CENTER)
         self.treeview_game_list.heading('Bin Files', text='Bin Files', anchor=CENTER)
         self.treeview_game_list.heading('Name Valid', text='Name Valid', anchor=CENTER)
+        self.treeview_game_list.heading('BMP', text='BMP', anchor=CENTER)
         self.treeview_game_list.heading('CU2', text='CU2', anchor=CENTER)
         self.treeview_game_list.heading('LST', text='LST', anchor=CENTER)
-        self.treeview_game_list.heading('BMP', text='BMP', anchor=CENTER)
         self.treeview_game_list.heading('LibCrypt', text='LibCrypt', anchor=CENTER)
 
         scrollbar_game_list = Scrollbar(self.window, bootstyle="primary-round", orient=VERTICAL, 
                                       command=self.treeview_game_list.yview)
 
         self.treeview_game_list.configure(yscroll=scrollbar_game_list.set)
-        self.treeview_game_list.place(x=30, y=160, width=window_width -70, height=window_height -350)
-        scrollbar_game_list.place(x=960, y=160, height=window_height -350)
+        self.treeview_game_list.place(x=30, y=120, width=window_width -70, height=410)
+        scrollbar_game_list.place(x=960, y=120, height=410)
     # ************************************************************************************
 
 
@@ -1161,23 +1145,24 @@ class PSIOGameAssistant:
 
 
     # ************************************************************************************
-    def gui_process_frame(self, window_width: int, window_height: int):
+    def gui_process_frame(self, window_width: int):
         """Create the process frame"""
-        progress_frame = Labelframe(self.window, text='Process Files', bootstyle="primary")
+        frame_y = 580
 
-        progress_frame.place(x=170, y=510, width=window_width -185, height=window_height -530)
-
-        Checkbutton(self.window, text='Redump Rename', bootstyle="round-toggle", takefocus=0, 
-                   variable=self.redump_rename, command=self._checkbox_changed).place(x=190, y=540)
+        progress_frame = Labelframe(self.window, text='Process', bootstyle="primary")
+        progress_frame.place(x=20, y=frame_y, width=window_width -30, height=190)
 
         self.progress_bar = Floodgauge(font=(None, 14, 'bold'), mask='', mode='determinate')
-        self.progress_bar.place(x=190, y=570, width=window_width -360, height=window_height -630)
+        self.progress_bar.place(x=30, y=frame_y +30, width=window_width -50, height=30)
 
-        self.button_start = Button(self.window, text='Start', command=self._start_button_clicked, state=DISABLED)
-        self.button_start.place(x=840, y=570, width=window_width -870, height=window_height -630)
+        self.label_progress = Label(self.window, text="", width=120, bootstyle="primary")
+        self.label_progress.place(x=30, y=frame_y +60, width=window_width -450, height=30)
 
-        self.label_progress = Label(self.window, text=self.PROGRESS_STATUS, width=120, bootstyle="primary")
-        self.label_progress.place(x=190, y=605, width=window_width -450, height=window_height -630)
+        Checkbutton(self.window, text='Redump Rename', bootstyle="primary", takefocus=0,
+                   variable=self.redump_rename, command=self._checkbox_changed).place(x=30, y=frame_y +110)
+
+        self.button_start = Button(self.window, text='Process', command=self._start_button_clicked, state=DISABLED)
+        self.button_start.place(x=30, y=frame_y +140, width=window_width -50, height=30)
 
         self.label_progress.after(1000, ensure_database_exists)
     # ************************************************************************************

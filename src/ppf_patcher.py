@@ -11,7 +11,7 @@ def open_files_for_patching(bin_path: str, ppf_path: str):
     ''' Opens the BIN/ISO and PPF files for patching'''
 
     # Open BIN/ISO in read/write binary mode
-    print(f"Opening bin file: {bin_path}")
+    print(f"\nOpening bin file: {bin_path}")
     try:
         bin_file = open(bin_path, 'r+b')
     except OSError as e:
@@ -27,7 +27,6 @@ def open_files_for_patching(bin_path: str, ppf_path: str):
         bin_file.close()
         return None, None
 
-    print(f"Files opened successfully: bin_fd={bin_file.fileno()}, ppf_fd={ppf_file.fileno()}")
     return bin_file, ppf_file
 # ************************************************************************************
 
@@ -43,13 +42,10 @@ def ppf_version(ppf_file):
     # Check if it is a PPF1, PPF2 or PPF3 file
     magic_str = magic.decode('ascii', errors='ignore')
     if magic_str == 'PPF1':
-        print("Detected PPF1.0")
         return 1
     elif magic_str == 'PPF2':
-        print("Detected PPF2.0")
         return 2
     elif magic_str == 'PPF3':
-        print("Detected PPF3.0")
         return 3
     else:
         print("Error: patchfile is no PPF patch")
@@ -74,7 +70,6 @@ def apply_ppf1_patch(ppf_file, bin_file):
     # Print the patch details
     print("Patchfile is a PPF1.0 patch. Patch Information:")
     print(f"Description: {desc}")
-    print("File_id.diz: no")
 
     # Skip the 56 byte header and seek to the patch data
     ppf_file.seek(0, SEEK_END)
@@ -95,7 +90,7 @@ def apply_ppf1_patch(ppf_file, bin_file):
         seekpos += 5 + anz
         count -= 5 + anz
 
-    print("successful.")
+    print("successful.\n")
 # ************************************************************************************
 
 
@@ -168,7 +163,7 @@ def apply_ppf2_patch(ppf_file, bin_file):
         seekpos += 5 + anz
         count -= 5 + anz
 
-    print("successful.")
+    print("successful.\n")
 # ************************************************************************************
 
 
@@ -269,7 +264,7 @@ def apply_ppf3_patch(ppf_file, bin_file, mode: int = 1):
         if undo:
             count -= anz
 
-    print("successful.")
+    print("successful.\n")
 # ************************************************************************************
 
 
