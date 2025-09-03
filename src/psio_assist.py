@@ -223,7 +223,7 @@ class PSIOGameAssistant:
 
             if redump_game_name is not None and redump_game_name != "":
                 redump_name = self._game_name_validator(redump_game_name)
-                
+
                 self._debug_print(f'Validated Redump Game Name: {redump_name}')
                 self._rename_game(game, redump_name)
     # ************************************************************************************
@@ -249,17 +249,19 @@ class PSIOGameAssistant:
         game_id = game.get_id()
         game_name = game.get_cue_sheet().get_game_name()
 
-        if not game.get_cover_art_present():
-            self._debug_print('ADDING THE GAME COVER ART...')
-            self.label_progress.configure(text=f'{self.PROGRESS_STATUS} Adding cover art - {game_name}')
+        if game.get_cover_art_present():
+            return
 
-            # Get the game cover art from the database and copy it to the local directory
-            game_full_path = join(game.get_directory_path(), game.get_directory_name())
-            copy_game_cover(game_full_path, game_id, game_name)
+        self._debug_print('ADDING THE GAME COVER ART...')
+        self.label_progress.configure(text=f'{self.PROGRESS_STATUS} Adding cover art - {game_name}')
 
-            # If the game cover has been copied, update the game object cover details
-            if exists(join(game_full_path, f'{game_name}.bmp')):
-                game.set_cover_art_present(True)
+        # Get the game cover art from the database and copy it to the local directory
+        game_full_path = join(game.get_directory_path(), game.get_directory_name())
+        copy_game_cover(game_full_path, game_id, game_name)
+
+        # If the game cover has been copied, update the game object cover details
+        if exists(join(game_full_path, f'{game_name}.bmp')):
+            game.set_cover_art_present(True)
     # ************************************************************************************
 
 
@@ -267,93 +269,116 @@ class PSIOGameAssistant:
     def _apply_libcrypt_patch(self, game: Game):
         """Apply LibCrypt PPF patch"""
 
-        if game.get_libcrypt_required():
-            if libcrypt_patch_available(game.get_id()):
-                self._debug_print('PATCHING BIN FILE...')
+        if not game.get_libcrypt_required():
+            return
 
-                # Get the LibCrypt PPF patch from the database and copy it to the local directory
-                game_full_path = join(game.get_directory_path(), game.get_directory_name())
-                copy_libcrypt_patch(game_full_path, game.get_id())
+        if libcrypt_patch_available(game.get_id()):
+            self._debug_print('PATCHING BIN FILE...')
 
-                bin_path = game.get_cue_sheet().get_bin_files()[0].get_file_path()
-                ppf_path = f"{join(game.get_directory_path(), game.get_directory_name(), game.get_id())}.ppf"
+            # Get the LibCrypt PPF patch from the database and copy it to the local directory
+            game_full_path = join(game.get_directory_path(), game.get_directory_name())
+            copy_libcrypt_patch(game_full_path, game.get_id())
 
-                # If the PPF patch file has been copied, patch the BIN file
-                if exists(ppf_path):
-                    bin_file, ppf_file = open_files_for_patching(bin_path, ppf_path)
+            bin_path = game.get_cue_sheet().get_bin_files()[0].get_file_path()
+            ppf_path = f"{join(game.get_directory_path(), game.get_directory_name(), game.get_id())}.ppf"
 
-                    self._debug_print("Applying patch...")
-                    with bin_file, ppf_file:
-                        version = ppf_version(ppf_file)
-                        if version == 1:
-                            apply_ppf1_patch(ppf_file, bin_file)
-                        elif version == 2:
-                            apply_ppf2_patch(ppf_file, bin_file)
-                        elif version == 3:
-                            apply_ppf3_patch(ppf_file, bin_file)
+            # If the PPF patch file has been copied, patch the BIN file
+            if exists(ppf_path):
+                bin_file, ppf_file = open_files_for_patching(bin_path, ppf_path)
 
-                    # Delete the PPF patch file after it has been applied to the BIN file
-                    remove(ppf_path)
+                self._debug_print("Applying patch...")
+                with bin_file, ppf_file:
+                    version = ppf_version(ppf_file)
+                    if version == 1:
+                        apply_ppf1_patch(ppf_file, bin_file)
+                    elif version == 2:
+                        apply_ppf2_patch(ppf_file, bin_file)
+                    elif version == 3:
+                        apply_ppf3_patch(ppf_file, bin_file)
+
+                # Delete the PPF patch file after it has been applied to the BIN file
+                remove(ppf_path)
     # ************************************************************************************
 
 
     # ************************************************************************************
     def _generate_multidisc_files(self):
         """Generate MULTIDISC.LST file for all multi-disc games"""
-
         multi_disc_games = [game for game in self.game_list if game.get_disc_number() > 0]
-        if not len(multi_disc_games) > 0:
+        if not multi_disc_games:
             return
 
         self._debug_print('\nGENERATING MULTI-DISC FILES...\n')
+        self._process_multi_disc_games()
+    # ************************************************************************************
 
+
+    # ************************************************************************************
+    def _process_multi_disc_games(self):
+        """Process each game in the game list to handle multi-disc collections."""
         for game in self.game_list:
-            # Find the first disc in a collection that has no multi-disc configured
-            if game.get_disc_number() == 1 and not game.get_multi_disc_file_present():
+            if not self._is_first_disc_without_multidisc(game):
+                continue
 
-                self._debug_print(f'Game name: {game.get_cue_sheet().get_game_name()}')
-                self._debug_print(f'Game disc collection: {game.get_disc_collection()}')
+            self._debug_print(f'Game name: {game.get_cue_sheet().get_game_name()}')
+            self._debug_print(f'Game disc collection: {game.get_disc_collection()}')
 
-                # Get each game from the collection
-                multi_games = []
-                for game_id in game.get_disc_collection():
-                    the_game = self._find_game_by_id(game_id.replace("_", "-"))
-                    multi_games.append(the_game)
+            multi_games = self._collect_multi_games(game)
+            if len(multi_games) <= 1:
+                continue
 
-                if len(multi_games) > 1:
-                    # Create the multi-disc folder to hold the game collection
-                    game_folder = self._remove_disc_from_name(multi_games[0].get_cue_sheet().get_game_name())
-                    new_game_path = join(multi_games[0].get_directory_path(), game_folder)
-                    self._debug_print(f'\nCreating multi-disc folder: {new_game_path}')
-                    mkdir(new_game_path)
+            new_game_path = self._create_multi_disc_folder(multi_games)
+            self._process_disc_files(multi_games, new_game_path)
+            self._generate_lst_file(multi_games)
+            self._copy_multi_disc_cover_art(game, multi_games)
+    # ************************************************************************************
 
-                    if exists(new_game_path):
-                        # Process each game in the collection
-                        for multi_disc in multi_games:
-                            disc_path = join(multi_disc.get_directory_path(), multi_disc.get_directory_name())
 
-                            self._debug_print(f'disc_path: {disc_path}')
+    # ************************************************************************************
+    def _is_first_disc_without_multidisc(self, game):
+        """Check if the game is the first disc without a multi-disc file."""
+        return game.get_disc_number() == 1 and not game.get_multi_disc_file_present()
+    # ************************************************************************************
 
-                            # Move all of the files for the disc into the multi-disc directory
-                            for filename in listdir(disc_path):
-                                source_path = join(disc_path, filename)
-                                target_path = join(new_game_path, filename)
-                                file_no_ext = splitext(filename)[0]
 
-                                # Move the file
-                                self._move_file(source_path, target_path)
+    # ************************************************************************************
+    def _collect_multi_games(self, game):
+        """Collect all games in the disc collection."""
+        return [
+            self._find_game_by_id(game_id.replace("_", "-"))
+            for game_id in game.get_disc_collection()
+        ]
+    # ************************************************************************************
 
-                            # Update the game paths
-                            self._update_game_paths(multi_disc, new_game_path, game_folder, file_no_ext)
 
-                            # Remove the original game directory
-                            rmtree(disc_path)
+    # ************************************************************************************
+    def _create_multi_disc_folder(self, multi_games):
+        """Create a folder for the multi-disc game collection."""
+        game_folder = self._remove_disc_from_name(multi_games[0].get_cue_sheet().get_game_name())
+        new_game_path = join(multi_games[0].get_directory_path(), game_folder)
+        self._debug_print(f'\nCreating multi-disc folder: {new_game_path}')
+        mkdir(new_game_path)
+        return new_game_path if exists(new_game_path) else None
+    # ************************************************************************************
 
-                    # Generate LST file
-                    self._generate_lst_file(multi_games)
 
-                # Ensure that each disc in the collection has cover art available.
-                self._copy_multi_disc_cover_art(game, multi_games)
+    # ************************************************************************************
+    def _process_disc_files(self, multi_games, new_game_path):
+        """Move files for each disc and update game paths."""
+        game_folder = self._remove_disc_from_name(multi_games[0].get_cue_sheet().get_game_name())
+        for multi_disc in multi_games:
+            disc_path = join(multi_disc.get_directory_path(), multi_disc.get_directory_name())
+            self._debug_print(f'disc_path: {disc_path}')
+
+            for filename in listdir(disc_path):
+                source_path = join(disc_path, filename)
+                target_path = join(new_game_path, filename)
+                file_no_ext = splitext(filename)[0]
+
+                self._move_file(source_path, target_path)
+                self._update_game_paths(multi_disc, new_game_path, game_folder, file_no_ext)
+
+            rmtree(disc_path)
     # ************************************************************************************
 
 
