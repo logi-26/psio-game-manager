@@ -8,16 +8,60 @@ The application will merge the split database files into a single file when it i
 '''
 
 from sys import argv
-from os import remove
+from os import remove, rename
 from os.path import exists, join, abspath, dirname
 from sqlite3 import connect, Error
 from filesplit.merge import Merge
+from filesplit.split import Split
 from pathlib2 import Path
 
 DATABASE_PATH = join(Path(abspath(dirname(argv[0]))), 'data')
 DATABASE_FILE = 'psio_assist.db'
-DATABASE_MANIFEST_FILE = 'fs_manifest.csv'
+DATABASE_MANIFEST_FILE = 'manifest'
 DATABASE_FULL_PATH = join(DATABASE_PATH, DATABASE_FILE)
+
+
+# ************************************************************************************
+def _split_database():
+    """Split the database file into 4 parts using the filesplit library."""
+    if not exists(DATABASE_FULL_PATH):
+        print(f"Database file {DATABASE_FULL_PATH} not found!")
+        return
+
+    # Define the size for each split (approximately 40MB per part, except the last)
+    split_size = 40000000  # 40MB in bytes
+
+    try:
+        # Initialize the Split object
+        splitter = Split(DATABASE_FULL_PATH, DATABASE_PATH)
+
+        # Split the file into parts with the specified size
+        splitter.bysize(split_size, includeheader=False)
+
+        print(f"Database file {DATABASE_FILE} split into 4 parts successfully.")
+
+        # Rename the split files to match the expected naming convention (psio_assist_1.db, etc.)
+        for i in range(1, 5):
+            # Use the base name 'psio_assist' (without .db) and append _0001, _0002, etc.
+            original_split = join(DATABASE_PATH, f"psio_assist_{i:04d}.db")
+            new_split = join(DATABASE_PATH, f"psio_assist_{i}.db")
+            if exists(original_split):
+                rename(original_split, new_split)
+                print(f"Renamed {original_split} to {new_split}")
+            else:
+                print(f"Split file {original_split} not found after splitting!")
+                return
+
+        # Verify manifest file exists
+        manifest_path = join(DATABASE_PATH, DATABASE_MANIFEST_FILE)
+        if exists(manifest_path):
+            print(f"Manifest file created at {manifest_path}")
+        else:
+            print(f"Manifest file {manifest_path} not created!")
+
+    except Exception as error:
+        print(f"Error splitting database file: {error}")
+# ************************************************************************************
 
 
 # ************************************************************************************
