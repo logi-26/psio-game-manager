@@ -48,6 +48,7 @@ from os.path import exists, join, dirname, basename, splitext, abspath, isfile
 from time import sleep
 from json import load, dumps
 from typing import Union
+from argparse import ArgumentParser
 from re import search, sub, IGNORECASE
 from shutil import copyfile, move, rmtree
 from tkinter import Menu, filedialog, StringVar, BooleanVar, TclError
@@ -55,21 +56,14 @@ from ttkbootstrap import Window, Floodgauge, Treeview, Style, Scrollbar, Labelfr
 from ttkbootstrap.dialogs import MessageDialog
 from ttkbootstrap.constants import DISABLED
 from pathlib2 import Path
-from PIL import Image, ImageTk
 
 # Local imports
 from game_files import Game, Cuesheet, Binfile
 from binmerge import set_binmerge_error_log_path, start_bin_merge, read_cue_file
 from cue2cu2 import set_cu2_error_log_path, start_cue2cu2
-from ppf_patcher import open_files_for_patching, ppf_version, apply_ppf1_patch, apply_ppf2_patch, apply_ppf3_patch
+from ppf_patcher import set_ppf_debug_mode, open_files_for_patching, ppf_version, apply_ppf1_patch, apply_ppf2_patch, apply_ppf3_patch
 from db import ensure_database_exists, get_redump_name, get_disc_number, get_libcrypt_status, libcrypt_patch_available, copy_game_cover, copy_libcrypt_patch
 
-
-DEBUG_MODE = True
-
-def debug_print(the_string: str):
-    if DEBUG_MODE:
-        print(the_string)
 
 class PSIOGameAssistant:
     REGION_CODES = ['DTLS_', 'SCES_', 'SLES_', 'SLED_', 'SCED_', 'SCUS_',
@@ -86,9 +80,8 @@ class PSIOGameAssistant:
     MAX_LINES_TO_CHECK = 300
     GAME_ID_LENGTH = 11
 
-    def __init__(self):
-
-        debug_print(f'\nPSIO Game Assistant v{self.CURRENT_REVISION}')
+    def __init__(self, args=None):
+        """Initialise the PSIO Game Assistant application"""
 
         self.game_list = []
         self.script_root_dir = Path(abspath(dirname(argv[0])))
@@ -100,7 +93,8 @@ class PSIOGameAssistant:
         set_cu2_error_log_path(self.error_log_file)
         set_binmerge_error_log_path(self.error_log_file)
 
-        # Initialise GUI variables
+        # Initialise variables
+        self.args = args
         self.window = None
         self.src_path = None
         self.dest_path = None
@@ -114,12 +108,26 @@ class PSIOGameAssistant:
         self.label_src = None
         self.cover_art_frame = None
 
+        # Set debug mode based on the parsed arguments
+        self.debug_mode = args.debug if args else False
+        set_ppf_debug_mode(self.debug_mode)
+
+        self._debug_print(f'\nPSIO Game Assistant v{self.CURRENT_REVISION}')
+
+
+    # ************************************************************************************
+    def _debug_print(self, the_string: str):
+        """Print debug information to the console"""
+        if self.debug_mode:
+            print(the_string)
+    # ************************************************************************************
+
 
     # ************************************************************************************
     def process_games(self):
         """Process the games in the game list"""
 
-        debug_print('\nPROCESSING GAMES...')
+        self._debug_print('\nPROCESSING GAMES...')
 
         # Loop through all of the Game objects in the game list
         for game in self.game_list:
@@ -128,29 +136,29 @@ class PSIOGameAssistant:
             game_name = game.get_cue_sheet().get_game_name()
             self.label_progress.configure(text=f'{self.PROGRESS_STATUS} Processing - {game_name}')
 
-            debug_print('\n***********************************************************')
-            debug_print(f'GAME_ID: {game.get_id()}')
-            debug_print(f'GAME_NAME: {game_name}')
+            self._debug_print('\n***********************************************************')
+            self._debug_print(f'GAME_ID: {game.get_id()}')
+            self._debug_print(f'GAME_NAME: {game_name}')
 
             # Merge multi-bin files
-            self.merge_bin_files(game)
+            self._merge_multi_bin_files(game)
 
             # Generate CU2 file for games with CCDA audio
-            self.generate_cu2_file(game)
+            self._generate_cu2_file(game)
 
             # Rename the game using the game name from the Redump project
-            self.rename_game_using_redump(game)
+            self._rename_game_using_redump(game)
 
             # Validate the game name
-            self.validate_game_name(game)
+            self._validate_game_name(game)
 
             # Add the game cover art
-            self.add_game_cover_art(game)
+            self._add_game_cover_art(game)
 
             # Apply LibCrypt PPF patch
-            self.apply_libcrypt_patch(game)
+            self._apply_libcrypt_patch(game)
 
-            debug_print('***********************************************************\n')
+            self._debug_print('***********************************************************\n')
 
         # Generate multi-disc games after all of the other processes have been completed
         self._generate_multidisc_files()
@@ -160,19 +168,19 @@ class PSIOGameAssistant:
         # Update the game list in the GUI
         self._display_game_list()
 
-        debug_print('Processing finished!\n')
+        self._debug_print('Processing finished!\n')
     # ************************************************************************************
 
 
     # ************************************************************************************
-    def merge_bin_files(self, game: Game):
+    def _merge_multi_bin_files(self, game: Game):
         """Merge multi-bin files"""
         game_name = game.get_cue_sheet().get_game_name()
         game_full_path = join(game.get_directory_path(), game.get_directory_name())
         cue_full_path = join(game_full_path, game.get_cue_sheet().get_file_name())
 
         if len(game.get_cue_sheet().get_bin_files()) > 1:
-            debug_print('MERGING BIN FILES...')
+            self._debug_print('MERGING BIN FILES...')
             self.label_progress.configure(text=f'{self.PROGRESS_STATUS} Merging bin files - {game_name}')
             self._merge_bin_files(game)
 
@@ -184,14 +192,14 @@ class PSIOGameAssistant:
 
 
     # ************************************************************************************
-    def generate_cu2_file(self, game: Game):
+    def _generate_cu2_file(self, game: Game):
         """Generate CU2 file for games with CCDA audio"""
         game_name = game.get_cue_sheet().get_game_name()
         game_full_path = join(game.get_directory_path(), game.get_directory_name())
         cue_full_path = join(game_full_path, game.get_cue_sheet().get_file_name())
 
         if game.get_cu2_required() and not game.get_cu2_present():
-            debug_print('GENERATING CU2...')
+            self._debug_print('GENERATING CU2...')
             self.label_progress.configure(text=f'{self.PROGRESS_STATUS} Generating cu2 file - {game_name}')
             start_cue2cu2(cue_full_path, f'{game_name}.bin')
 
@@ -202,47 +210,47 @@ class PSIOGameAssistant:
 
 
     # ************************************************************************************
-    def rename_game_using_redump(self, game: Game):
+    def _rename_game_using_redump(self, game: Game):
         """Rename the game using the game name from the Redump project"""
         if self.redump_rename.get():
             game_id = game.get_id()
             game_name = game.get_cue_sheet().get_game_name()
-            debug_print('RENAMING THE GAME FILES USING REDUMP...')
+            self._debug_print('RENAMING THE GAME FILES USING REDUMP...')
             self.label_progress.configure(text=f'{self.PROGRESS_STATUS} Renaming - {game_name}')
 
             redump_game_name = get_redump_name(game_id)
-            debug_print(f'Redump Game Name: {redump_game_name}')
+            self._debug_print(f'Redump Game Name: {redump_game_name}')
 
             if redump_game_name is not None and redump_game_name != "":
                 redump_name = self._game_name_validator(redump_game_name)
                 
-                debug_print(f'Validated Redump Game Name: {redump_name}')
+                self._debug_print(f'Validated Redump Game Name: {redump_name}')
                 self._rename_game(game, redump_name)
     # ************************************************************************************
 
 
     # ************************************************************************************
-    def validate_game_name(self, game: Game):
+    def _validate_game_name(self, game: Game):
         """Validate the game name"""
         game_name = game.get_cue_sheet().get_game_name()
         if len(game_name) > self.MAX_GAME_NAME_LENGTH or '.' in game_name:
-            debug_print('FIXING THE GAME NAME...')
+            self._debug_print('FIXING THE GAME NAME...')
             self.label_progress.configure(text=f'{self.PROGRESS_STATUS} Validating name - {game_name}')
             new_game_name = self._game_name_validator(game)
-            debug_print(f'Fixed Game Name: {new_game_name}')
+            self._debug_print(f'Fixed Game Name: {new_game_name}')
             if new_game_name != game_name:
                 self._rename_game(game, new_game_name)
     # ************************************************************************************
 
 
     # ************************************************************************************
-    def add_game_cover_art(self, game: Game):
+    def _add_game_cover_art(self, game: Game):
         """Add the game cover art"""
         game_id = game.get_id()
         game_name = game.get_cue_sheet().get_game_name()
 
         if not game.get_cover_art_present():
-            debug_print('ADDING THE GAME COVER ART...')
+            self._debug_print('ADDING THE GAME COVER ART...')
             self.label_progress.configure(text=f'{self.PROGRESS_STATUS} Adding cover art - {game_name}')
 
             # Get the game cover art from the database and copy it to the local directory
@@ -256,12 +264,12 @@ class PSIOGameAssistant:
 
 
     # ************************************************************************************
-    def apply_libcrypt_patch(self, game: Game):
+    def _apply_libcrypt_patch(self, game: Game):
         """Apply LibCrypt PPF patch"""
 
         if game.get_libcrypt_required():
             if libcrypt_patch_available(game.get_id()):
-                debug_print('PATCHING BIN FILE...')
+                self._debug_print('PATCHING BIN FILE...')
 
                 # Get the LibCrypt PPF patch from the database and copy it to the local directory
                 game_full_path = join(game.get_directory_path(), game.get_directory_name())
@@ -274,7 +282,7 @@ class PSIOGameAssistant:
                 if exists(ppf_path):
                     bin_file, ppf_file = open_files_for_patching(bin_path, ppf_path)
 
-                    print("Applying patch...")
+                    self._debug_print("Applying patch...")
                     with bin_file, ppf_file:
                         version = ppf_version(ppf_file)
                         if version == 1:
@@ -297,14 +305,14 @@ class PSIOGameAssistant:
         if not len(multi_disc_games) > 0:
             return
 
-        debug_print('\nGENERATING MULTI-DISC FILES...\n')
+        self._debug_print('\nGENERATING MULTI-DISC FILES...\n')
 
         for game in self.game_list:
             # Find the first disc in a collection that has no multi-disc configured
             if game.get_disc_number() == 1 and not game.get_multi_disc_file_present():
 
-                debug_print(f'Game name: {game.get_cue_sheet().get_game_name()}')
-                debug_print(f'Game disc collection: {game.get_disc_collection()}')
+                self._debug_print(f'Game name: {game.get_cue_sheet().get_game_name()}')
+                self._debug_print(f'Game disc collection: {game.get_disc_collection()}')
 
                 # Get each game from the collection
                 multi_games = []
@@ -316,7 +324,7 @@ class PSIOGameAssistant:
                     # Create the multi-disc folder to hold the game collection
                     game_folder = self._remove_disc_from_name(multi_games[0].get_cue_sheet().get_game_name())
                     new_game_path = join(multi_games[0].get_directory_path(), game_folder)
-                    debug_print(f'\nCreating multi-disc folder: {new_game_path}')
+                    self._debug_print(f'\nCreating multi-disc folder: {new_game_path}')
                     mkdir(new_game_path)
 
                     if exists(new_game_path):
@@ -324,7 +332,7 @@ class PSIOGameAssistant:
                         for multi_disc in multi_games:
                             disc_path = join(multi_disc.get_directory_path(), multi_disc.get_directory_name())
 
-                            debug_print(f'disc_path: {disc_path}')
+                            self._debug_print(f'disc_path: {disc_path}')
 
                             # Move all of the files for the disc into the multi-disc directory
                             for filename in listdir(disc_path):
@@ -376,7 +384,7 @@ class PSIOGameAssistant:
 
 
     # ************************************************************************************
-    def _generate_lst_file(self, multi_games):
+    def _generate_lst_file(self, multi_games: list[Game]):
         """Generate LST file"""
         game_path = join(multi_games[0].get_directory_path(), multi_games[0].get_directory_name())
         try:
@@ -396,7 +404,7 @@ class PSIOGameAssistant:
     def _copy_multi_disc_cover_art(self, disc_1: Game, multi_games):
         """Duplicate the cover art from disc 1 for each of the multi-disc games, if missing"""
 
-        debug_print("CHECKING COVER ART FOR MULTI-DISC GAME...")
+        self._debug_print("CHECKING COVER ART FOR MULTI-DISC GAME...")
 
         if disc_1.get_cover_art_present():
             # Get the cover art for disc 1
@@ -471,8 +479,8 @@ class PSIOGameAssistant:
         except FileNotFoundError:
             print(f"Error: CUE file '{cue_file_path}' not found.")
             return False
-        except OSError as e:
-            print(f"Error reading CUE file: {e}")
+        except OSError as error:
+            print(f"Error reading CUE file: {error}")
             return False
     # ************************************************************************************
 
@@ -531,7 +539,7 @@ class PSIOGameAssistant:
         if game_name == new_game_name:
             return
 
-        debug_print(f'Renaming game from "{game_name}" to "{new_game_name}"')
+        self._debug_print(f'Renaming game from "{game_name}" to "{new_game_name}"')
 
         game_full_path = join(game.get_directory_path(), game.get_directory_name())
 
@@ -710,7 +718,7 @@ class PSIOGameAssistant:
         """Create and populate the global game list."""
         self.game_list = []
         sub_folders = self._get_sub_folders(selected_path)
-        debug_print('\nGAME DETAILS:\n')
+        self._debug_print('\nGAME DETAILS:\n')
 
         for sub_folder in sub_folders:
             self._process_sub_folder(selected_path, sub_folder)
@@ -812,40 +820,16 @@ class PSIOGameAssistant:
     def _print_game_details(self, game: Game):
         """Print game details for debugging"""
         game_path = join(game.get_directory_path(), game.get_directory_name())
-        debug_print(f'Game Path: {game_path}')
-        debug_print(f'Game ID: {game.get_id()}')
-        debug_print(f'Game Name: {game.get_cue_sheet().get_game_name()}')
-        debug_print(f'Disc Number: {game.get_disc_number()}')
-        debug_print(f'Number of Bin Files: {len(game.get_cue_sheet().get_bin_files())}')
+        self._debug_print(f'Game Path: {game_path}')
+        self._debug_print(f'Game ID: {game.get_id()}')
+        self._debug_print(f'Game Name: {game.get_cue_sheet().get_game_name()}')
+        self._debug_print(f'Disc Number: {game.get_disc_number()}')
+        self._debug_print(f'Number of Bin Files: {len(game.get_cue_sheet().get_bin_files())}')
         if game.get_disc_collection():
-            debug_print(f'Disc Collection: {game.get_disc_collection()}')
-        debug_print(f'Has Cover ART: {game.get_cover_art_present()}')
-        debug_print(f'CU2 Required: {game.get_cu2_required()}')
-        debug_print(f'Has CU2: {game.get_cu2_present()}\n')
-    # ************************************************************************************
-
-
-    # ************************************************************************************
-    def _load_image(self, image_path: str):
-        """Load and display the BMP image"""
-        print()
-        '''
-        for widget in self.cover_art_frame.winfo_children():
-            widget.destroy()
-
-        try:
-            if not isfile(image_path):
-                raise FileNotFoundError(f"Image file not found: {image_path}")
-
-            image = Image.open(image_path)
-            image = image.resize((90, 90), Image.Resampling.LANCZOS)
-            photo = ImageTk.PhotoImage(image)
-            image_label = Label(self.cover_art_frame, image=photo, bootstyle="primary")
-            image_label.pack(pady=4, padx=4)
-
-        except (OSError, FileNotFoundError) as e:
-            debug_print(e)
-        '''
+            self._debug_print(f'Disc Collection: {game.get_disc_collection()}')
+        self._debug_print(f'Has Cover ART: {game.get_cover_art_present()}')
+        self._debug_print(f'CU2 Required: {game.get_cu2_required()}')
+        self._debug_print(f'Has CU2: {game.get_cu2_present()}\n')
     # ************************************************************************************
 
 
@@ -892,7 +876,7 @@ class PSIOGameAssistant:
                 invalid_named_games +=1
 
         # Display a message dialog box showing the counts
-        if DEBUG_MODE:
+        if self.debug_mode:
             md = MessageDialog(
                 f'''Total Discs Found: {len(self.game_list)} \nMulti-Disc Games: {multi_disc_games} \nUnidentified Games: {unidentified_games} \nMulti-bin Games: {multi_bin_games} \nMissing Covers: {games_without_cover} \nInvalid Game Names: {invalid_named_games}''',
                 title='Game Details', width=650, padding=(20, 20))
@@ -965,17 +949,17 @@ class PSIOGameAssistant:
             tree.selection_set(item)
 
             # Get the game ID
-            values = tree.item(item, "values")
-            game_id = values[0]
+            #values = tree.item(item, "values")
+            #game_id = values[0]
 
             # Find the game object using the game ID
-            the_game = self._find_game_by_id(game_id)
+            #the_game = self._find_game_by_id(game_id)
 
             # Determine the BMP image path from the CUE file path
-            bmp_path = the_game.get_cue_sheet().get_file_path()[:-4] + ".bmp"
+            #bmp_path = the_game.get_cue_sheet().get_file_path()[:-4] + ".bmp"
 
             # Display the BMP image
-            self._load_image(bmp_path)
+            #self._load_image(bmp_path)
 
     def _update_progress_bar(self, value):
         """Update the progress bar"""
@@ -1066,23 +1050,20 @@ class PSIOGameAssistant:
         menubar.add_cascade(label="Help", menu=help_menu, underline=0)
 
         # Browse frame
-        self.gui_browse_frame(window_width)
+        self._gui_browse_frame(window_width)
 
         # Game list frame
-        self.gui_game_list_frame(window_width)
-
-        # Cover art frame
-        #self.gui_cover_art_frame(window_width, window_height)
+        self._gui_game_list_frame(window_width)
 
         # Process frame
-        self.gui_process_frame(window_width)
+        self._gui_process_frame(window_width)
 
         self._prevent_hidden_files()
     # ************************************************************************************
 
 
     # ************************************************************************************
-    def gui_browse_frame(self, window_width: int):
+    def _gui_browse_frame(self, window_width: int):
         """Create the browse frame"""
         browse_frame = Labelframe(self.window, text='Root Directory', bootstyle="primary")
         browse_frame.place(x=15, y=10, width=window_width -30, height=70)
@@ -1096,7 +1077,7 @@ class PSIOGameAssistant:
 
 
     # ************************************************************************************
-    def gui_game_list_frame(self, window_width: int):
+    def _gui_game_list_frame(self, window_width: int):
         """Create the game list frame"""
         game_list_frame = Labelframe(self.window, text='Games', bootstyle="primary")
         game_list_frame.place(x=15, y=100, width=window_width -30, height=450)
@@ -1137,15 +1118,7 @@ class PSIOGameAssistant:
 
 
     # ************************************************************************************
-    def gui_cover_art_frame(self, window_width: int, window_height: int):
-        """Create the cover art frame"""
-        self.cover_art_frame = Labelframe(self.window, text='BMP', bootstyle="primary")
-        self.cover_art_frame.place(x=15, y=510, width=window_width -870, height=window_height -530)
-    # ************************************************************************************
-
-
-    # ************************************************************************************
-    def gui_process_frame(self, window_width: int):
+    def _gui_process_frame(self, window_width: int):
         """Create the process frame"""
         frame_y = 580
 
@@ -1174,6 +1147,21 @@ class PSIOGameAssistant:
         self.window.mainloop()
 
 
+def parse_arguments():
+    """Parse command-line arguments"""
+    parser = ArgumentParser(
+        description="PSIO Game Assistant for preparing PlayStation games for use with a PSIO device."
+    )
+
+    parser.add_argument(
+        "-d", "--debug",
+        action="store_true",
+        help="Enable debug mode for verbose output."
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    app = PSIOGameAssistant()
+    args = parse_arguments()
+    app = PSIOGameAssistant(args)
     app.run()
