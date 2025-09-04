@@ -42,7 +42,7 @@
 #  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 # System imports
-from sys import argv
+import sys
 from os import listdir, scandir, mkdir, remove
 from os.path import exists, join, dirname, basename, splitext, abspath, isfile
 from time import sleep
@@ -51,7 +51,7 @@ from typing import Union
 from argparse import ArgumentParser
 from re import search, sub, IGNORECASE
 from shutil import copyfile, move, rmtree
-from tkinter import Menu, filedialog, StringVar, BooleanVar, TclError
+from tkinter import Menu, filedialog, StringVar, BooleanVar, TclError, PhotoImage
 from ttkbootstrap import Window, Floodgauge, Treeview, Style, Scrollbar, Labelframe, Label, Button, Checkbutton, NO, CENTER, VERTICAL
 from ttkbootstrap.dialogs import MessageDialog
 from ttkbootstrap.constants import DISABLED
@@ -62,7 +62,7 @@ from game_files import Game, Cuesheet, Binfile
 from binmerge import set_binmerge_error_log_path, start_bin_merge, read_cue_file
 from cue2cu2 import set_cu2_error_log_path, start_cue2cu2
 from ppf_patcher import set_ppf_debug_mode, open_files_for_patching, ppf_version, apply_ppf1_patch, apply_ppf2_patch, apply_ppf3_patch
-from db import ensure_database_exists, get_redump_name, get_disc_number, get_libcrypt_status, libcrypt_patch_available, copy_game_cover, copy_libcrypt_patch
+from db import set_database_path, ensure_database_exists, get_redump_name, get_disc_number, get_libcrypt_status, libcrypt_patch_available, copy_game_cover, copy_libcrypt_patch
 
 
 class PSIOGameAssistant:
@@ -84,7 +84,7 @@ class PSIOGameAssistant:
         """Initialise the PSIO Game Assistant application"""
 
         self.game_list = []
-        self.script_root_dir = Path(abspath(dirname(argv[0])))
+        self.script_root_dir = Path(abspath(dirname(sys.argv[0])))
         self.covers_path = join(dirname(self.script_root_dir), 'covers')
         self.error_log_file = join(dirname(self.script_root_dir), 'errors.txt')
         self.config_file_path = join(self.script_root_dir, 'config')
@@ -96,6 +96,7 @@ class PSIOGameAssistant:
         # Initialise variables
         self.args = args
         self.window = None
+        self.icon = None
         self.src_path = None
         self.dest_path = None
         self.redump_rename = None
@@ -108,11 +109,35 @@ class PSIOGameAssistant:
         self.label_src = None
         self.cover_art_frame = None
 
+        # Set the database and icon file paths
+        self.database_name = "psio_assist.db"
+        self.icon_path = self._resource_path("icon.ico")
+        self.database_path = self._resource_path("data")
+        set_database_path(self.database_path, self.database_name)
+
+        print(f'Database path: {self.database_path}')
+        print(f'Database path exists: {exists(self.database_path)}')
+        print(f'Icon path: {self.icon_path}')
+        print(f'Icon path exists: {exists(self.icon_path)}')
+
         # Set debug mode based on the parsed arguments
         self.debug_mode = args.debug if args else False
         set_ppf_debug_mode(self.debug_mode)
 
         self._debug_print(f'\nPSIO Game Assistant v{self.CURRENT_REVISION}')
+
+
+    # ************************************************************************************
+    def _resource_path(self, relative_path):
+        """Get the absolute path to resources, works for scripts and the bundled exe"""
+        if hasattr(sys, '_MEIPASS'):
+            # Running as an exe
+            base_path = sys._MEIPASS
+        else:
+            # Running as a script
+            base_path = abspath(".")
+        return join(base_path, relative_path)
+    # ************************************************************************************
 
 
     # ************************************************************************************
@@ -181,7 +206,8 @@ class PSIOGameAssistant:
 
         if len(game.get_cue_sheet().get_bin_files()) > 1:
             self._debug_print('MERGING BIN FILES...')
-            self.label_progress.configure(text=f'{self.PROGRESS_STATUS} Merging bin files - {game_name}')
+            label_text = f'{self.PROGRESS_STATUS} Merging bin files - {game_name}'
+            self.label_progress.configure(text=label_text)
             self._merge_bin_files(game)
 
             bin_path = cue_full_path[:-4] + ".bin"
@@ -200,7 +226,8 @@ class PSIOGameAssistant:
 
         if game.get_cu2_required() and not game.get_cu2_present():
             self._debug_print('GENERATING CU2...')
-            self.label_progress.configure(text=f'{self.PROGRESS_STATUS} Generating cu2 file - {game_name}')
+            label_text = f'{self.PROGRESS_STATUS} Generating cu2 file - {game_name}'
+            self.label_progress.configure(text=label_text)
             start_cue2cu2(cue_full_path, f'{game_name}.bin')
 
             cu2_path = cue_full_path[:-4] + ".cu2"
@@ -235,7 +262,9 @@ class PSIOGameAssistant:
         game_name = game.get_cue_sheet().get_game_name()
         if len(game_name) > self.MAX_GAME_NAME_LENGTH or '.' in game_name:
             self._debug_print('FIXING THE GAME NAME...')
-            self.label_progress.configure(text=f'{self.PROGRESS_STATUS} Validating name - {game_name}')
+            label_text = f'{self.PROGRESS_STATUS} Validating name - {game_name}'
+            self.label_progress.configure(text=label_text)
+
             new_game_name = self._game_name_validator(game)
             self._debug_print(f'Fixed Game Name: {new_game_name}')
             if new_game_name != game_name:
@@ -279,8 +308,9 @@ class PSIOGameAssistant:
             game_full_path = join(game.get_directory_path(), game.get_directory_name())
             copy_libcrypt_patch(game_full_path, game.get_id())
 
+            game_path = join(game.get_directory_path(), game.get_directory_name())
             bin_path = game.get_cue_sheet().get_bin_files()[0].get_file_path()
-            ppf_path = f"{join(game.get_directory_path(), game.get_directory_name(), game.get_id())}.ppf"
+            ppf_path = f"{join(game_path, game.get_id())}.ppf"
 
             # If the PPF patch file has been copied, patch the BIN file
             if exists(ppf_path):
@@ -441,8 +471,13 @@ class PSIOGameAssistant:
                 # Loop through the other discs in the collection and duplicate disc 1 cover art
                 for multi_disc in multi_games:
                     if multi_disc.get_disc_number() > 1 and not multi_disc.get_cover_art_present():
-                        disc_path = join(multi_disc.get_directory_path(), multi_disc.get_directory_name())
-                        disc_bmp_path = join(disc_path, f"{multi_disc.get_cue_sheet().get_game_name()}.bmp")
+
+                        game_dir_path = multi_disc.get_directory_path()
+                        game_dir_name = multi_disc.get_directory_name()
+                        game_name = multi_disc.get_cue_sheet().get_game_name()
+
+                        disc_path = join(game_dir_path, game_dir_name)
+                        disc_bmp_path = join(disc_path, f"{game_name}.bmp")
 
                         copyfile(disc_1_bmp_path, disc_bmp_path)
 
@@ -769,9 +804,17 @@ class PSIOGameAssistant:
     # ************************************************************************************
     def _find_cue_sheets(self, game_directory_path: str) -> list:
         """Find CUE or CU2 files in the specified directory."""
-        cue_sheets = [f for f in listdir(game_directory_path) if f.lower().endswith('.cue') and not f.startswith('.')]
+        cue_sheets = [
+            f for f in listdir(game_directory_path)
+            if f.lower().endswith('.cue') and not f.startswith('.')
+        ]
+
         if not cue_sheets:
-            cue_sheets = [f for f in listdir(game_directory_path) if f.lower().endswith('.cu2') and not f.startswith('.')]
+            cue_sheets = [
+                f for f in listdir(game_directory_path)
+                if f.lower().endswith('.cu2') and not f.startswith('.')
+            ]
+
         return cue_sheets
     # ************************************************************************************
 
@@ -795,7 +838,8 @@ class PSIOGameAssistant:
         bin_files = read_cue_file(cue_sheet_path)
         game_id = self._get_game_id(bin_files[0].filename) if bin_files else None
         disc_number = get_disc_number(game_id) if game_id else 0
-        disc_collection = self._get_disc_collection(join(game_directory_path, f'{game_name_from_cue}.bin')) if game_name_from_cue else []
+        bin_path = join(game_directory_path, f'{game_name_from_cue}.bin')
+        disc_collection = self._get_disc_collection(bin_path) if game_name_from_cue else []
 
         # Get libcrypt status
         libcrypt_required = get_libcrypt_status(game_id) if game_id else False
@@ -881,7 +925,8 @@ class PSIOGameAssistant:
                 unidentified_games +=1
 
             # Increment the games without covers variable
-            if not game.get_cover_art_present() and game.get_disc_number() is not None and int(game.get_disc_number()) < 2:
+            disc_number = game.get_disc_number()
+            if not game.get_cover_art_present() and disc_number and int(disc_number) < 2:
                 games_without_cover +=1
 
             # Increment the multi discs variable
@@ -889,7 +934,7 @@ class PSIOGameAssistant:
                 multi_discs +=1
 
                 # Increment the multi disc games variable
-                if int(game.get_disc_number()) == 1:
+                if int(disc_number) == 1:
                     multi_disc_games +=1
 
             # Increment the multi-bin files variable
@@ -897,15 +942,27 @@ class PSIOGameAssistant:
                 multi_bin_games +=1
 
             # Increment the invalid game names variable
-            if len(game.get_cue_sheet().get_game_name()) > self.MAX_GAME_NAME_LENGTH or '.' in game.get_cue_sheet().get_game_name():
+            game_name = game.get_cue_sheet().get_game_name()
+            if len(game_name) > self.MAX_GAME_NAME_LENGTH or '.' in game_name:
                 invalid_named_games +=1
 
-        # Display a message dialog box showing the counts
-        if self.debug_mode:
-            md = MessageDialog(
-                f'''Total Discs Found: {len(self.game_list)} \nMulti-Disc Games: {multi_disc_games} \nUnidentified Games: {unidentified_games} \nMulti-bin Games: {multi_bin_games} \nMissing Covers: {games_without_cover} \nInvalid Game Names: {invalid_named_games}''',
-                title='Game Details', width=650, padding=(20, 20))
-            md.show()
+        # Display a message dialog box showing the counts  
+        message = (
+            f"Total Discs Found: {len(self.game_list)}\n"
+            f"Multi-Disc Games: {multi_disc_games}\n"
+            f"Unidentified Games: {unidentified_games}\n"
+            f"Multi-bin Games: {multi_bin_games}\n"
+            f"Missing Covers: {games_without_cover}\n"
+            f"Invalid Game Names: {invalid_named_games}"
+        )
+
+        md = MessageDialog(
+            message,
+            title='Game Details',
+            width=650,
+            padding=(20, 20)
+        )
+        md.show()
 
         self._display_game_list()
         self._update_window()
@@ -1047,6 +1104,9 @@ class PSIOGameAssistant:
         self.window = Window(title=f'PSIO Game Assistant v{self.CURRENT_REVISION}',
                                themename=self._get_stored_theme(), size=[window_width, window_height], resizable=[False, False])
 
+        # Set the app icon based on OS
+        self._load_app_icon()
+
         # Initialise Tkinter variables
         self.src_path = StringVar(self.window)
         self.dest_path = StringVar(self.window)
@@ -1084,6 +1144,27 @@ class PSIOGameAssistant:
         self._gui_process_frame(window_width)
 
         self._prevent_hidden_files()
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def _load_app_icon(self):
+        """Load the application icon based on the OS"""
+        try:
+            if sys.platform.lower() == "win32":
+                # Use .ico file for Windows
+                icon_path = self._resource_path('icon.ico')
+                if exists(icon_path):
+                    self.window.iconbitmap(icon_path)
+            else:
+                # Use .png file for macOS/Linux
+                icon_path = self._resource_path('icon.png')
+                if exists(icon_path):
+                    self.icon = PhotoImage(file=icon_path)
+                    self.window.iconphoto(True, self.icon)
+
+        except TclError as error:
+            self._debug_print(f"Error setting icon: {error}")
     # ************************************************************************************
 
 
