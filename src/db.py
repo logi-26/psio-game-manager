@@ -7,15 +7,15 @@ This is due to the 100MB file size limit in GitHub
 The application will merge the split database files into a single file when it is launched
 '''
 
-from sys import argv
+from sys import exit
 from os import remove, makedirs
-from os.path import exists, join, abspath, dirname, getsize
+from os.path import exists, join, getsize
 from sqlite3 import connect, Error
 from pathlib2 import Path
 
-DATABASE_PATH = join(Path(abspath(dirname(argv[0]))), 'data')
-DATABASE_FILE = 'psio_assist.db'
-DATABASE_FULL_PATH = join(DATABASE_PATH, DATABASE_FILE)
+DATABASE_PATH = None
+DATABASE_FILE = None
+DATABASE_FULL_PATH = None
 
 
 # ************************************************************************************
@@ -142,16 +142,30 @@ def _extract_game_libcrypt_patch_blob(row_id, ppf_out_path: str):
 
 
 # ************************************************************************************
+def set_database_path(database_path: str, database_name: str):
+    """Set the database path based on whether the application is running as a script or an exe"""
+    global DATABASE_PATH, DATABASE_FILE, DATABASE_FULL_PATH
+    DATABASE_PATH = database_path
+    DATABASE_FILE = database_name
+    DATABASE_FULL_PATH = join(DATABASE_PATH, DATABASE_FILE)
+# ************************************************************************************
+
+
+# ************************************************************************************
 def ensure_database_exists():
     """Ensures that the database file exists and has been merged into a single file"""
     if not exists(DATABASE_FULL_PATH):
         if _database_splits_exist():
             _merge_database()
             if not exists(DATABASE_FULL_PATH):
+                print('\n******************************')
                 print('Unable to merge database file!')
+                print('******************************\n')
                 exit()
         else:
+            print('\n******************************')
             print('Database split-files not found!')
+            print('******************************\n')
             exit()
 # ************************************************************************************
 
