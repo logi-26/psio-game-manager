@@ -27,14 +27,6 @@ This application has Python PPF patching functions that where based on this C co
 **ppf**<br/>
 https://github.com/meunierd/ppf
 
-## Windows Users
-There is a Windows exe file in the src/dist directory.<br/>
-You will also need the "data" folder that contains the database files.<br/>
-
-## Notes
-For best performance, use the application with your games stored on a PC HDD/SSD and then transfer to an SD card.<br/>
-SD card read/write speeds are a lot slower, if you have a lot of multi-bin games the process can take a lot longer.<br/><br/>
-The application uses the games cue sheet to identify the games. If your game does not have a .cue file it will not be detected.
 
 ## LibCrypt Patches
 - SLES_031.89 - 102 Dalmatians
@@ -252,12 +244,22 @@ The application uses the games cue sheet to identify the games. If your game doe
 - SLES_027.33 - Walt Disney World Quest
 - SCES_019.09 - Wip3out (Europe)
 
+## Windows Users
+There is a Windows exe file:<br/>
+https://github.com/logi-26/psio-assist/releases/tag/V0.3<br/>
+
+## Notes
+For best performance, use the application with your games stored on a PC HDD/SSD and then transfer to an SD card.<br/>
+SD card read/write speeds are a lot slower, if you have a lot of multi-bin games the process can take a lot longer.<br/><br/>
+The application uses the games cue sheet to identify the games. If your game does not have a .cue file it will not be detected.<br/>
+
 ## Dependencies
 This project requires Python 3 and the following Python packages:
 - `ttkbootstrap`
 - `pathlib2`
 
 ### Installation Steps for running the Python scripts
+
 1. **Install Python 3**:
    - Download and install Python 3 from the official website: https://www.python.org/downloads/
    - Ensure Python 3 is added to your system PATH.
@@ -269,45 +271,62 @@ This project requires Python 3 and the following Python packages:
      ```
    - If pip is not installed, you can install it by following the instructions here: https://pip.pypa.io/en/stable/installation/
 
-3. **Set up a virtual environment**:
-   - It is recommended to use a virtual environment to manage dependencies. To create and activate a virtual environment, follow these steps:
+3. **Set up a virtual environment or use a Docker container**:
+   
+    **To create and run the app in a Python virtual environment, follow these steps**:
      - Create a virtual environment:
        ```bash
-       python3 -m venv venv
+       python -m venv psio_assist_env
        ```
      - Activate the virtual environment:
        - On Windows:
          ```bash
-         venv\Scripts\activate
+         psio_assist_env\Scripts\activate
          ```
        - On macOS and Linux:
          ```bash
-         source venv/bin/activate
+         source psio_assist_env/bin/activate
          ```
        - On Linux (alternative method):
          ```bash
-         . venv/bin/activate
+         . psio_assist_env/bin/activate
          ```
-   - For more information on virtual environments, refer to the official documentation: https://docs.python.org/3/library/venv.html
+      - Install dependencies in the virtual environment:
+        ```bash
+        pip install -r requirements.txt
+        ```
+      - Navigate to the `src` directory where `psio_assist.py` is located.
+      - Run the script using Python:
+        ```bash
+        python psio_assist.py
+        ```
 
-4. **Install the required Python packages**:
-   - With the virtual environment activated, run:
-     ```bash
-     pip install ttkbootstrap pathlib2
-     ```
+    **To create and run the app in a Docker container, follow these steps**:
+      - Download and install Docker Desktop from the official website: https://docs.docker.com/desktop/
+      - Open a terminal in your project directory and run:
+        ```bash
+        docker build -t psio-assist-app .
+        ```
+        This builds an image named psio-assist-app
+      - Run the container with:
+        ```bash
+        docker run psio-assist-app
+        ```
 
 ## Usage
-1. **Run the application**:
-   - Ensure you have activated your virtual environment.
-   - Navigate to the `src` directory where `psio_assist.py` is located.
-   - Run the script using Python:
+1. **Using the GUI**:
+   - Click on the **Browse** button and select the directory that contains your bin/cue files.
+   - OPTIONAL: Select to rename all games using the game names from the PlayStation Redump project.
+   - Click on the **Process** button to process the games.
+   - The progress bar will display the progress of the application.
+
+2. **OPTIONAL: Run the application with debug print logs**:
+   - Run the script using the -d commandline argument:
      ```bash
-     python3 psio_assist.py
+     python psio_assist.py -d
      ```
 
-2. **Using the GUI**:
-   - Click on the **Browse** button and select the directory that contains your bin/cue files.
-   - Click on the **Scan** button to scan the games inside the selected directory.
-   - OPTIONAL: Select to rename all games using the game names from the PlayStation Redump project.
-   - Click on the **Start** button to process the games.
-   - The progress bar will display the progress of the application.
+  - Run the exe using the -d commandline argument:
+    ```bash
+    psio_assist.exe -d
+    ```
