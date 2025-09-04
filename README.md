@@ -326,7 +326,7 @@ This project requires Python 3 and the following Python packages:
      python psio_assist.py -d
      ```
 
-  - Run the exe using the -d commandline argument:
-    ```bash
-    psio_assist.exe -d
-    ```
+   - Run the exe using the -d commandline argument:
+     ```bash
+     psio_assist.exe -d
+     ```
