@@ -249,9 +249,19 @@ There is a Windows exe file:<br/>
 https://github.com/logi-26/psio-assist/releases/tag/V0.3<br/>
 
 ## Notes
-For best performance, use the application with your games stored on a PC HDD/SSD and then transfer to an SD card.<br/>
-SD card read/write speeds are a lot slower, if you have a lot of multi-bin games the process can take a lot longer.<br/><br/>
-The application uses the games cue sheet to identify the games. If your game does not have a .cue file it will not be detected.<br/>
+  - For best performance, use the application with your games stored on a PC HDD/SSD and then transfer to an SD card. SD card read/write speeds are a lot slower, if you have a lot of multi-bin games the process can take a lot longer.
+  - The application uses the games cue sheet to identify the games. If your game does not have a .cue file it will not be detected.
+  - If a game is a single disc game the disc number will be displayed with zero to indicate that it is not part of a collection.
+  - If a game is not part of a collection the LST will be displayed with an asterisk.
+  - If a game is part of a collection and an LST file is not present the LST will be displayed with "No".
+  - If a game is part of a collection and an LST file is present the LST will be displayed with "Yes".
+
+  - If a game does not require a CU2 file the CU2 will be displayed with an asterisk.
+  - If a game does require a CU2 file and one is not present the CU2 will be displayed with "No".
+  - If a game does require a CU2 file and one is present the CU2 will be displayed with "Yes".
+  - If a game does not use LibCrypt the LibCrypt will be displayed with an asterisk.
+  - If a game does use LibCrypt but their is no patch available the LibCrypt will be displayed with "No".
+  - If a game does use LibCrypt and their is a patch available the LibCrypt will be displayed with "Yes".
 
 ## Dependencies
 This project requires Python 3 and the following Python packages:
