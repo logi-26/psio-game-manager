@@ -207,6 +207,23 @@ def get_redump_name(game_id: str):
 
 
 # ************************************************************************************
+def get_track_info(game_id: str):
+    """Get the disc track info from the local database"""
+
+    formatted_game_id = game_id.replace('-','_')
+    query = (
+        f'SELECT track_number, pregap, sectors, size, crc '
+        f'FROM tracks '
+        f'WHERE game_id = "{formatted_game_id}" '
+        f'ORDER BY track_number'
+    )
+
+    response = select(f'''{query};''')
+    return response
+# ************************************************************************************
+
+
+# ************************************************************************************
 def get_disc_number(game_id: str):
     """Get the disc number from the local database"""
 
