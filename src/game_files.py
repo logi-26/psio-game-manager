@@ -104,6 +104,7 @@ class Cuesheet:
         self._game_name = game_name
         self._new_name = None
         self._bin_files = []
+        self._tracks = []
 
     # Getter and setter for file_name
     def get_file_name(self):
@@ -137,11 +138,67 @@ class Cuesheet:
     def get_bin_files(self):
         return self._bin_files
 
-    def set_bin_files(self, value):
-        self._bin_files = value
+    def set_bin_files(self, bin_files):
+        self._bin_files = bin_files
 
     def add_bin_file(self, bin_file):
         self._bin_files.append(bin_file)
+
+    # Getter and setter for tracks
+    def get_tracks(self):
+        return self._tracks
+
+    def set_tracks(self, tracks):
+        self._tracks = tracks
+
+    def add_track(self, track):
+        self._tracks.append(track)
+# ************************************************************************************
+
+
+# ************************************************************************************
+class Track:
+    def __init__(self, track_number, pregap, sectors, size, crc32):
+        self._track_number = track_number
+        self._pregap = pregap
+        self._sectors = sectors
+        self._size = size
+        self._crc32 = crc32
+
+    # Getter and setter for track_number
+    def get_track_number(self):
+        return self._track_number
+
+    def set_track_number(self, track_number):
+        self._track_number = track_number
+
+    # Getter and setter for pregap
+    def get_pregap(self):
+        return self._pregap
+
+    def set_pregap(self, pregap):
+        self._pregap = pregap
+
+    # Getter and setter for sectors
+    def get_sectors(self):
+        return self._sectors
+
+    def set_sectors(self, sectors):
+        self._sectors = sectors
+
+    # Getter and setter for size
+    def get_size(self):
+        return self._size
+
+    def set_size(self, size):
+        self._size = size
+
+    # Getter and setter for crc32
+    def get_crc32(self):
+        return self._crc32
+
+    def set_crc32(self, crc32):
+        self._crc32 = crc32 
 # ************************************************************************************
 
 
