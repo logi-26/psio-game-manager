@@ -194,6 +194,9 @@ def select(select_query: str):
 def get_redump_name(game_id: str):
     """Get the game name using names from Redump/PSX Data-Centre stored in a local database"""
 
+    if not game_id:
+        return
+
     formatted_game_id = game_id.replace('-','_')
     query = f'SELECT name FROM games WHERE game_id = "{formatted_game_id}"'
     response = select(f'''{query};''')
@@ -209,6 +212,9 @@ def get_redump_name(game_id: str):
 # ************************************************************************************
 def get_track_info(game_id: str):
     """Get the disc track info from the local database"""
+
+    if not game_id:
+        return
 
     formatted_game_id = game_id.replace('-','_')
     query = (
@@ -227,6 +233,9 @@ def get_track_info(game_id: str):
 def get_disc_number(game_id: str):
     """Get the disc number from the local database"""
 
+    if not game_id:
+        return
+
     formatted_game_id = game_id.replace('-','_')
     query = f'SELECT disc_number FROM games WHERE game_id = "{formatted_game_id}"'
     response = select(f'''{query};''')
@@ -238,6 +247,9 @@ def get_disc_number(game_id: str):
 # ************************************************************************************
 def get_libcrypt_status(game_id: str):
     """Get the libcrypt status from local database"""
+
+    if not game_id:
+        return
 
     formatted_game_id = game_id.replace('-','_')
     query = f'SELECT libcrypt FROM games WHERE game_id = "{formatted_game_id}"'
@@ -251,6 +263,9 @@ def get_libcrypt_status(game_id: str):
 def libcrypt_patch_available(game_id: str) -> bool:
     """Check if there is a LibCrypt PPF patch available in the local database"""
 
+    if not game_id:
+        return
+
     formatted_game_id = game_id.replace('-','_')
     query = f'SELECT id FROM libcrypt_patches WHERE game_id = "{formatted_game_id}"'
     response = select(f'''{query};''')
@@ -262,6 +277,9 @@ def libcrypt_patch_available(game_id: str) -> bool:
 # ************************************************************************************
 def copy_game_cover(output_path: str, game_id: str, game_name: str):
     """Copy the game front cover art if it is available in the local database"""
+
+    if not game_id:
+        return
 
     formatted_game_id = game_id.replace('-','_')
     query = f'SELECT id FROM covers WHERE game_id = "{formatted_game_id}"'
@@ -278,6 +296,9 @@ def copy_game_cover(output_path: str, game_id: str, game_name: str):
 # ************************************************************************************
 def copy_libcrypt_patch(output_path: str, game_id: str):
     """Copy the LibCrypt PPF patch file if it is available in the local database"""
+
+    if not game_id:
+        return
 
     formatted_game_id = game_id.replace('-','_')
     query = f'SELECT id FROM libcrypt_patches WHERE game_id = "{formatted_game_id}"'

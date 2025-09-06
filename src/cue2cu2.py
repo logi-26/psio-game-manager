@@ -32,7 +32,7 @@ error_log_path = None
 
 
 # ************************************************************************************
-def _convert_timecode_to_sectors(time_code):
+def _timecode_to_sectors(time_code):
     """Convert time code to sectors"""
     minutes = int(time_code[0:2])
     seconds = int(time_code[3:5])
@@ -45,7 +45,7 @@ def _convert_timecode_to_sectors(time_code):
 
 
 # ************************************************************************************
-def _convert_sectors_to_timecode(sectors):
+def _sectors_to_timecode(sectors):
     """Convert sectors to time code"""
     total_seconds = int(int(sectors)/75)
     modulo_sectors = int(int(sectors)%75)
@@ -58,7 +58,7 @@ def _convert_sectors_to_timecode(sectors):
 
 
 # ************************************************************************************
-def _convert_sectors_to_timecode_with_alternative_notation(sectors):
+def _sectors_to_timecode_alternative(sectors):
     """Convert sectors to time code, but use MM:SS-1:75 instead of MM:SS:00"""
     total_seconds = int(int(sectors)/75)
     modulo_sectors = int(int(sectors)%75)
@@ -78,10 +78,11 @@ def _convert_sectors_to_timecode_with_alternative_notation(sectors):
 
 
 # ************************************************************************************
-def _convert_bytes_to_sectors(file_size):
+def _bytes_to_sectors(file_size):
     """Get the total runtime/size of a binary file in sectors, given the file size in bytes"""
     if file_size % 2352 == 0:
-        return int(int(file_size)/2352)
+        size = int(file_size) / 2352
+        return int(size)
 # ************************************************************************************
 
 
@@ -89,17 +90,16 @@ def _convert_bytes_to_sectors(file_size):
 def _convert_filesize_to_sectors(binary_file):
     """Get the total runtime/size of a binary file in sectors"""
     if exists(binary_file):
-        return _convert_bytes_to_sectors(getsize(binary_file))
+        return _bytes_to_sectors(getsize(binary_file))
 # ************************************************************************************
 
 
 # ************************************************************************************
 def _timecode_addition(time_code, offset):
     """Add two timecodes together, but cap the result at 449999 (the max CU2 format supports)"""
-    result = _convert_timecode_to_sectors(time_code) + _convert_timecode_to_sectors(offset)
-    if result > int('449999'):
-        result = int('449999')
-    return _convert_sectors_to_timecode(result)
+    result = _timecode_to_sectors(time_code) + _timecode_to_sectors(offset)
+    result = min(result, int('449999'))
+    return _sectors_to_timecode(result)
 # ************************************************************************************
 
 
@@ -167,19 +167,21 @@ def start_cue2cu2(cuesheet, binaryfile_name):
         return False
 
     # Get the total runtime/size
-    size = _convert_sectors_to_timecode(sectors)
+    size = _sectors_to_timecode(sectors)
     output = f'{output}size    {size}\r\n'
 
-    # Get data1 - well, this is always the same for our kind of disc images, so...
-    # At some point I should do this the proper way and grab it from Track 1.
+    # Get data1 - At some point I should do this the proper way and grab it from Track 1.
     data1 = _timecode_addition('00:00:00','00:02:00')
     output = f'{output}data1       {data1}\r\n'
 
     # Get the track and pregap lengths
     pregap_command_used_before = bool(False)
+
     for track in range(2, ntracks+1):
+
         # Find current track number in cuesheet_content
-        current_track_in_cuesheet = -1;
+        current_track_in_cuesheet = -1
+
         for line in cuesheet_content:
             current_track_in_cuesheet += 1
             if compile(f'.*[Tt][Rr][Aa][Cc][Kk] 0?{str(track)}.*').match(line):
@@ -190,21 +192,23 @@ def start_cue2cu2(cuesheet, binaryfile_name):
             pregap_position = cuesheet_content[current_track_in_cuesheet+1][::-1][:8][::-1][:9]
 
             # Add the famous two second offset for PSIO and convert to alternative notation used by Systems Console for tracks
-            pregap_position = _convert_sectors_to_timecode_with_alternative_notation(_convert_timecode_to_sectors(_timecode_addition(pregap_position,"00:02:00")))
+            pregap_position = _sectors_to_timecode_alternative(_timecode_to_sectors(_timecode_addition(pregap_position,"00:02:00")))
             output = f'{output}pregap{str(track).zfill(2)}  {pregap_position}\r\n'
 
         # Check if this cue sheet uses the PREGAP command, which is bad. We can continue, but...
         elif compile('.*[Pp][Rr][Ee][Gg][Aa][Pp].*').match(cuesheet_content[current_track_in_cuesheet+1]) and format_revision == int(2):
+
             if pregap_command_used_before == False:
                 _log_error('WARNING', f'The PREGAP command is used for track {str(track)}, which requires the software to insert data into the image or disc. This is not supported by Cue2cu2. The pregap will be ignored and a zero length pregap will be noted in the CU2 sheet in order to continue, but the resulting bin/CU2 set might not work as expected or not at all. If possible, please try a Redump compatible version of this image')
                 pregap_command_used_before = bool(True)
             elif pregap_command_used_before == True:
                 _log_error('WARNING', f'The PREGAP command is also used for track {str(track)}.')
+
             if compile('.*[Ii][Nn][Dd][Ee][Xx] 0?1.*').match(cuesheet_content[current_track_in_cuesheet+2]):
                 pregap_position = cuesheet_content[current_track_in_cuesheet+2][::-1][:8][::-1][:9]
 
                 # Add the famous two second offset for PSIO and convert to alternative notation used by Systems Console for tracks
-                pregap_position = _convert_sectors_to_timecode_with_alternative_notation(_convert_timecode_to_sectors(_timecode_addition(pregap_position,"00:02:00")))
+                pregap_position = _sectors_to_timecode_alternative(_timecode_to_sectors(_timecode_addition(pregap_position,"00:02:00")))
                 output = f'{output}pregap{str(track).zfill(2)}  {pregap_position}\r\n'
 
         elif format_revision == int(2):
@@ -221,11 +225,11 @@ def start_cue2cu2(cuesheet, binaryfile_name):
             return False
 
         # Add the famous two second offset for PSIO and convert to alternative notation used by Systems Console for tracks
-        track_position = _convert_sectors_to_timecode_with_alternative_notation(_convert_timecode_to_sectors(_timecode_addition(track_position,"00:02:00")))
+        track_position = _sectors_to_timecode_alternative(_timecode_to_sectors(_timecode_addition(track_position,"00:02:00")))
         output = f'{output}track{str(track).zfill(2)}   {track_position}\r\n'
 
     # Add the end for the last track
-    track_end = _convert_sectors_to_timecode_with_alternative_notation(_convert_timecode_to_sectors(_timecode_addition(size,'00:02:00')))
+    track_end = _sectors_to_timecode_alternative(_timecode_to_sectors(_timecode_addition(size,'00:02:00')))
     output = f'{output}\r\ntrk end   {track_end}'
 
     # *********************************************
