@@ -8,6 +8,7 @@ Works on Linux, Mac and Windows.<br>
 Organises and standardises PlayStation 1 games into a format acceptable by the PSIO device. It performs the following tasks:<br/>
 
 - Works in batch mode on all selected games.<br/>
+- Performs CRC-32 checks of each data track using data from the PlayStation Redump project.<br/>
 - Merges multi-bin games into a single bin file.<br/>
 - Generates cu2 files for all games that use CDDA audio.<br/>
 - Adds game cover images for games that do not have them.<br/>
@@ -258,6 +259,7 @@ https://github.com/logi-26/psio-assist/releases/tag/V0.3<br/>
   - If a game does not use LibCrypt the LibCrypt will be displayed with an asterisk.
   - If a game does use LibCrypt but their is no patch available the LibCrypt will be displayed with "No".
   - If a game does use LibCrypt and their is a patch available the LibCrypt will be displayed with "Yes".
+  - Once a game has had a LibCrypt patch applied the Redump CRC check will show as invalid.
 
 ## Dependencies
 This project requires Python 3 and the following Python packages:
