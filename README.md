@@ -18,11 +18,9 @@ Organises and standardises PlayStation 1 games into a format acceptable by the P
 
 ## Info
 This application uses the cue2cu2 Python script, which has been custom modified for psio-assist:<br/>
-**cue2cu2**<br/>
 https://github.com/NRGDEAD/Cue2cu2<br/>
 
 This application has Python PPF patching functions that where based on this C code:<br/>
-**ppf**<br/>
 https://github.com/meunierd/ppf
 
 
