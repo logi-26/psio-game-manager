@@ -10,3 +10,5 @@ __pycache__/
 *.spec
 
 src/data/psio_assist.db
+src/build/*
+src/builds/*
