@@ -11,301 +11,281 @@ from sys import exit
 from os import remove, makedirs
 from os.path import exists, join, getsize
 from sqlite3 import connect, Error
-from pathlib2 import Path
-
-DATABASE_PATH = None
-DATABASE_FILE = None
-DATABASE_FULL_PATH = None
 
 
-# ************************************************************************************
-def _split_database():
-    """Splits the database file into 4 equal parts"""
-    # Create output directory if it doesn't exist
-    if not exists(DATABASE_PATH):
-        makedirs(DATABASE_PATH)
-
-    # Get file size
-    file_size = getsize(DATABASE_FULL_PATH)
-    chunk_size = file_size // 4
-
-    # Read input file in binary mode
-    with open(DATABASE_FULL_PATH, 'rb') as f:
-        for i in range(4):
-            # Calculate size for this chunk (last chunk might be slightly larger)
-            if i == 3:
-                chunk_size = file_size - (chunk_size * 3)
-
-            # Read chunk data
-            chunk_data = f.read(chunk_size)
-
-            # Write chunk to new file
-            output_path = join(DATABASE_PATH, f'psio_assist_db_part_{i+1}')
-            with open(output_path, 'wb') as chunk_file:
-                chunk_file.write(chunk_data)
-# ************************************************************************************
+class GameDatabase:
+    """Manages SQLite3 database operations for game data and assets"""
+    
+    def __init__(self, debug_mode: bool = False):
+        self.debug_mode = debug_mode
+        self._database_path = None
+        self._database_file = None
+        self._database_full_path = None
 
 
-# ************************************************************************************
-def _merge_database():
-    """Merges the 4 split database files back into a single file"""
-    # Open output file in binary write mode
-    with open(DATABASE_FULL_PATH, 'wb') as outfile:
-        # Merge files in order (part_1 to part_4)
+    # ************************************************************************************
+    def _debug_print(self, message: str):
+        """Print debug messages if debug mode is enabled"""
+        if self.debug_mode:
+            print(message)
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def _split_database(self):
+        """Splits the database file into 4 equal parts"""
+        if not exists(self._database_path):
+            makedirs(self._database_path)
+
+        file_size = getsize(self._database_full_path)
+        chunk_size = file_size // 4
+
+        with open(self._database_full_path, 'rb') as f:
+            for i in range(4):
+                if i == 3:
+                    chunk_size = file_size - (chunk_size * 3)
+
+                chunk_data = f.read(chunk_size)
+                output_path = join(self._database_path, f'psio_assist_db_part_{i+1}')
+                with open(output_path, 'wb') as chunk_file:
+                    chunk_file.write(chunk_data)
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def _merge_database(self):
+        """Merges the 4 split database files back into a single file"""
+        with open(self._database_full_path, 'wb') as outfile:
+            for i in range(1, 5):
+                part_path = join(self._database_path, f'psio_assist_db_part_{i}')
+                if not exists(part_path):
+                    raise FileNotFoundError(f"Part file {part_path} not found")
+
+                with open(part_path, 'rb') as infile:
+                    outfile.write(infile.read())
+
+        self._delete_database_splits()
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def _database_splits_exist(self):
+        """Checks if each of the database split-files exist"""
         for i in range(1, 5):
-            part_path = join(DATABASE_PATH, f'psio_assist_db_part_{i}')
-            if not exists(part_path):
-                raise FileNotFoundError(f"Part file {part_path} not found")
-
-            # Read and write each part
-            with open(part_path, 'rb') as infile:
-                outfile.write(infile.read())
-
-    # Delete the split files after merging
-    _delete_database_splits()
-# ************************************************************************************
+            if not exists(join(self._database_path, f'psio_assist_db_part_{i}')):
+                return False
+        return True
+    # ************************************************************************************
 
 
-# ************************************************************************************
-def _database_splits_exist():
-    """Checks if each of the database split-files exist"""
-    for i in range(1,5):
-        if not exists(join(DATABASE_PATH, f'psio_assist_db_part_{i}')):
-            return False
-    return True
-# ************************************************************************************
+    # ************************************************************************************
+    def _delete_database_splits(self):
+        """Delete the database split-files"""
+        for i in range(1, 5):
+            part_path = join(self._database_path, f'psio_assist_db_part_{i}')
+            if exists(part_path):
+                remove(part_path)
+    # ************************************************************************************
 
 
-# ************************************************************************************
-def _delete_database_splits():
-    """Delete the database split-files"""
-    for i in range(1,5):
-        if exists(join(DATABASE_PATH, f'psio_assist_db_part_{i}')):
-            remove(join(DATABASE_PATH, f'psio_assist_db_part_{i}'))
-# ************************************************************************************
+    # ************************************************************************************
+    def _create_connection(self):
+        """Establish a connection with the local SQLite3 database"""
+        try:
+            conn = connect(self._database_full_path)
+            return conn
+        except Error as error:
+            print(error)
+            return None
+    # ************************************************************************************
 
 
-# ************************************************************************************
-def _create_connection(db_file):
-    """Establish a connection with the local Sqlite3 database"""
-    conn = None
-    try:
-        conn = connect(db_file)
-        return conn
-    except Error as error:
-        print(error)
-
-    return conn
-# ************************************************************************************
+    # ************************************************************************************
+    def set_database_path(self, database_path: str, database_name: str):
+        """Set the database path based on whether running as script or executable"""
+        self._database_path = database_path
+        self._database_file = database_name
+        self._database_full_path = join(database_path, database_name)
+    # ************************************************************************************
 
 
-# ************************************************************************************
-def _extract_game_cover_blob(row_id, image_out_path: str):
-    """Extract the game cover art data from the local database"""
-    try:
-        conn = _create_connection(DATABASE_FULL_PATH)
-        cursor = conn.cursor()
-
-        with open(image_out_path, 'wb') as output_file:
-            cursor.execute(f'SELECT psio FROM covers WHERE id = {row_id};')
-            image_blob = cursor.fetchone()
-            output_file.write(image_blob[0])
-
-        cursor.close()
-    except Error:
-        pass
-    finally:
-        if conn:
-            conn.close()
-# ************************************************************************************
-
-
-# ************************************************************************************
-def _extract_game_libcrypt_patch_blob(row_id, ppf_out_path: str):
-    """Extract the game LibCrypt PPF patch data from the local database"""
-    try:
-        conn = _create_connection(DATABASE_FULL_PATH)
-        cursor = conn.cursor()
-
-        with open(ppf_out_path, 'wb') as output_file:
-            cursor.execute(f'SELECT psio FROM libcrypt_patches WHERE id = {row_id};')
-            patch_blob = cursor.fetchone()
-            output_file.write(patch_blob[0])
-
-        cursor.close()
-    except Error:
-        pass
-    finally:
-        if conn:
-            conn.close()
-# ************************************************************************************
-
-
-# ************************************************************************************
-def set_database_path(database_path: str, database_name: str):
-    """Set the database path based on whether the application is running as a script or an exe"""
-    global DATABASE_PATH, DATABASE_FILE, DATABASE_FULL_PATH
-    DATABASE_PATH = database_path
-    DATABASE_FILE = database_name
-    DATABASE_FULL_PATH = join(DATABASE_PATH, DATABASE_FILE)
-# ************************************************************************************
-
-
-# ************************************************************************************
-def ensure_database_exists():
-    """Ensures that the database file exists and has been merged into a single file"""
-    if not exists(DATABASE_FULL_PATH):
-        if _database_splits_exist():
-            _merge_database()
-            if not exists(DATABASE_FULL_PATH):
+    # ************************************************************************************
+    def ensure_database_exists(self):
+        """Ensures that the database file exists and has been merged"""
+        if not exists(self._database_full_path):
+            if self._database_splits_exist():
+                self._merge_database()
+                if not exists(self._database_full_path):
+                    print('\n******************************')
+                    print('Unable to merge database file!')
+                    print('******************************\n')
+                    exit()
+            else:
                 print('\n******************************')
-                print('Unable to merge database file!')
+                print('Database split-files not found!')
                 print('******************************\n')
                 exit()
-        else:
-            print('\n******************************')
-            print('Database split-files not found!')
-            print('******************************\n')
-            exit()
-# ************************************************************************************
+    # ************************************************************************************
 
 
-# ************************************************************************************
-def select(select_query: str):
-    """Select data from the local database"""
-    rows = []
-    try:
-        conn = _create_connection(DATABASE_FULL_PATH)
-        cursor = conn.cursor()
-        cursor.execute(select_query)
-        rows = cursor.fetchall()
-        cursor.close()
-    except Error:
-        pass
-    finally:
-        if conn:
-            conn.close()
-
-    return rows
-# ************************************************************************************
-
-
-# ************************************************************************************
-def get_redump_name(game_id: str):
-    """Get the game name using names from Redump/PSX Data-Centre stored in a local database"""
-
-    if not game_id:
-        return
-
-    formatted_game_id = game_id.replace('-','_')
-    query = f'SELECT name FROM games WHERE game_id = "{formatted_game_id}"'
-    response = select(f'''{query};''')
-
-    if response is not None and response != []:
-        game_name = response[0][0]
-        return game_name
-
-    return ''
-# ************************************************************************************
+    # ************************************************************************************
+    def select(self, select_query: str):
+        """Select data from the local database"""
+        rows = []
+        conn = self._create_connection()
+        try:
+            if conn:
+                cursor = conn.cursor()
+                cursor.execute(select_query)
+                rows = cursor.fetchall()
+                cursor.close()
+        except Error:
+            pass
+        finally:
+            if conn:
+                conn.close()
+        return rows
+    # ************************************************************************************
 
 
-# ************************************************************************************
-def get_track_info(game_id: str):
-    """Get the disc track info from the local database"""
-
-    if not game_id:
-        return
-
-    formatted_game_id = game_id.replace('-','_')
-    query = (
-        f'SELECT track_number, pregap, sectors, size, crc '
-        f'FROM tracks '
-        f'WHERE game_id = "{formatted_game_id}" '
-        f'ORDER BY track_number'
-    )
-
-    response = select(f'''{query};''')
-    return response
-# ************************************************************************************
-
-
-# ************************************************************************************
-def get_disc_number(game_id: str):
-    """Get the disc number from the local database"""
-
-    if not game_id:
-        return
-
-    formatted_game_id = game_id.replace('-','_')
-    query = f'SELECT disc_number FROM games WHERE game_id = "{formatted_game_id}"'
-    response = select(f'''{query};''')
-
-    return response[0][0] if response and response != [] else 0
-# ************************************************************************************
+    # ************************************************************************************
+    def _extract_game_cover_blob(self, row_id, image_out_path: str):
+        """Extract the game cover art data from the local database"""
+        conn = self._create_connection()
+        try:
+            if conn:
+                cursor = conn.cursor()
+                with open(image_out_path, 'wb') as output_file:
+                    cursor.execute(f'SELECT psio FROM covers WHERE id = {row_id};')
+                    image_blob = cursor.fetchone()
+                    output_file.write(image_blob[0])
+                cursor.close()
+        except Error:
+            pass
+        finally:
+            if conn:
+                conn.close()
+    # ************************************************************************************
 
 
-# ************************************************************************************
-def get_libcrypt_status(game_id: str):
-    """Get the libcrypt status from local database"""
-
-    if not game_id:
-        return
-
-    formatted_game_id = game_id.replace('-','_')
-    query = f'SELECT libcrypt FROM games WHERE game_id = "{formatted_game_id}"'
-    response = select(f'''{query};''')
-
-    return response[0][0] if response and response != [] else 0
-# ************************************************************************************
-
-
-# ************************************************************************************
-def libcrypt_patch_available(game_id: str) -> bool:
-    """Check if there is a LibCrypt PPF patch available in the local database"""
-
-    if not game_id:
-        return
-
-    formatted_game_id = game_id.replace('-','_')
-    query = f'SELECT id FROM libcrypt_patches WHERE game_id = "{formatted_game_id}"'
-    response = select(f'''{query};''')
-
-    return response and response != []
-# ************************************************************************************
+    # ************************************************************************************
+    def _extract_game_libcrypt_patch_blob(self, row_id, ppf_out_path: str):
+        """Extract the game LibCrypt PPF patch data from the local database"""
+        conn = self._create_connection()
+        try:
+            if conn:
+                cursor = conn.cursor()
+                with open(ppf_out_path, 'wb') as output_file:
+                    cursor.execute(f'SELECT psio FROM libcrypt_patches WHERE id = {row_id};')
+                    patch_blob = cursor.fetchone()
+                    output_file.write(patch_blob[0])
+                cursor.close()
+        except Error:
+            pass
+        finally:
+            if conn:
+                conn.close()
+    # ************************************************************************************
 
 
-# ************************************************************************************
-def copy_game_cover(output_path: str, game_id: str, game_name: str):
-    """Copy the game front cover art if it is available in the local database"""
+    # ************************************************************************************
+    def get_redump_name(self, game_id: str) -> str:
+        """Get game name from Redump/PSX Data-Centre stored in local database"""
+        if not game_id:
+            return ''
 
-    if not game_id:
-        return
-
-    formatted_game_id = game_id.replace('-','_')
-    query = f'SELECT id FROM covers WHERE game_id = "{formatted_game_id}"'
-    response = select(f'''{query};''')
-
-    if response and response != []:
-        row_id = response[0][0]
-
-        image_out_path = join(output_path, f'{game_name}.bmp')
-        _extract_game_cover_blob(row_id, image_out_path)
-# ************************************************************************************
+        formatted_game_id = game_id.replace('-', '_')
+        query = f'SELECT name FROM games WHERE game_id = "{formatted_game_id}"'
+        response = self.select(query)
+        return response[0][0] if response else ''
+    # ************************************************************************************
 
 
-# ************************************************************************************
-def copy_libcrypt_patch(output_path: str, game_id: str):
-    """Copy the LibCrypt PPF patch file if it is available in the local database"""
+    # ************************************************************************************
+    def get_track_info(self, game_id: str):
+        """Get disc track info from the local database"""
+        if not game_id:
+            return
 
-    if not game_id:
-        return
+        formatted_game_id = game_id.replace('-', '_')
+        query = (
+            f'SELECT track_number, pregap, sectors, size, crc '
+            f'FROM tracks '
+            f'WHERE game_id = "{formatted_game_id}" '
+            f'ORDER BY track_number'
+        )
+        return self.select(query)
+    # ************************************************************************************
 
-    formatted_game_id = game_id.replace('-','_')
-    query = f'SELECT id FROM libcrypt_patches WHERE game_id = "{formatted_game_id}"'
-    response = select(f'''{query};''')
 
-    if response and response != []:
-        row_id = response[0][0]
-        ppf_out_path = join(output_path, f'{game_id}.ppf')
-        _extract_game_libcrypt_patch_blob(row_id, ppf_out_path)
-# ************************************************************************************
+    # ************************************************************************************
+    def get_database_disc_number(self, game_id: str):
+        """Get disc number from the local database"""
+        if not game_id:
+            return
+
+        formatted_game_id = game_id.replace('-', '_')
+        query = f'SELECT disc_number FROM games WHERE game_id = "{formatted_game_id}"'
+        response = self.select(query)
+        return response[0][0] if response else 0
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def get_libcrypt_status(self, game_id: str):
+        """Get libcrypt status from local database"""
+        if not game_id:
+            return
+
+        formatted_game_id = game_id.replace('-', '_')
+        query = f'SELECT libcrypt FROM games WHERE game_id = "{formatted_game_id}"'
+        response = self.select(query)
+        return response[0][0] if response else 0
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def libcrypt_patch_available(self, game_id: str) -> bool:
+        """Check if LibCrypt PPF patch is available in local database"""
+        if not game_id:
+            return False
+
+        formatted_game_id = game_id.replace('-', '_')
+        query = f'SELECT id FROM libcrypt_patches WHERE game_id = "{formatted_game_id}"'
+        response = self.select(query)
+        return bool(response)
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def copy_game_cover(self, output_path: str, game_id: str, game_name: str):
+        """Copy game front cover art if available in local database"""
+        if not game_id:
+            return
+
+        formatted_game_id = game_id.replace('-', '_')
+        query = f'SELECT id FROM covers WHERE game_id = "{formatted_game_id}"'
+        response = self.select(query)
+
+        if response:
+            row_id = response[0][0]
+            image_out_path = join(output_path, f'{game_name}.bmp')
+            self._extract_game_cover_blob(row_id, image_out_path)
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def copy_libcrypt_patch(self, output_path: str, game_id: str):
+        """Copy LibCrypt PPF patch file if available in local database"""
+        if not game_id:
+            return
+
+        formatted_game_id = game_id.replace('-', '_')
+        query = f'SELECT id FROM libcrypt_patches WHERE game_id = "{formatted_game_id}"'
+        response = self.select(query)
+
+        if response:
+            row_id = response[0][0]
+            ppf_out_path = join(output_path, f'{game_id}.ppf')
+            self._extract_game_libcrypt_patch_blob(row_id, ppf_out_path)
+    # ************************************************************************************

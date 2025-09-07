@@ -61,11 +61,11 @@ from pathlib2 import Path
 
 # Local imports
 from game_files import Game, Cuesheet, Binfile, Track
+from db import GameDatabase
 from crc_32 import CrcFileVerifier
 from binmerge import BinMerger
 from ppf_patcher import PPFProcessor
 from cue2cu2 import set_cu2_error_log_path, start_cue2cu2
-from db import set_database_path, ensure_database_exists, get_redump_name, get_disc_number, get_libcrypt_status, libcrypt_patch_available, copy_game_cover, copy_libcrypt_patch, get_track_info
 
 
 class PSIOGameAssistant:
@@ -92,7 +92,24 @@ class PSIOGameAssistant:
         self.error_log_file = join(dirname(self.script_root_dir), 'errors.txt')
         self.config_file_path = join(self.script_root_dir, 'config')
 
-        # Set the error log paths for the Bin-Merge and CUE2CU2 processes
+        # Set debug mode based on the parsed command-line arguments
+        self.debug_mode = args.debug if args else False
+
+        # Initialise the local classes
+        self.db = GameDatabase(debug_mode=self.debug_mode)
+        self.crc_verifier = CrcFileVerifier(debug_mode=self.debug_mode)
+        self.bin_merger = BinMerger(debug_mode=self.debug_mode)
+        self.ppf_patcher = PPFProcessor(debug_mode=self.debug_mode)
+
+        # Set the database paths
+        self.database_name = "psio_assist.db"
+        self.database_path = self._resource_path("data")
+        self.db.set_database_path(self.database_path, self.database_name)
+
+        # Set the icon path
+        self.icon_path = self._resource_path("icon.ico")
+
+        # Set the error log paths for the CUE2CU2 process
         set_cu2_error_log_path(self.error_log_file)
 
         # Initialise variables
@@ -110,21 +127,6 @@ class PSIOGameAssistant:
         self.treeview_game_list = None
         self.label_src = None
         self.cover_art_frame = None
-
-        # Set the database and icon file paths
-        self.database_name = "psio_assist.db"
-        self.icon_path = self._resource_path("icon.ico")
-        self.database_path = self._resource_path("data")
-        set_database_path(self.database_path, self.database_name)
-
-        # Set debug mode based on the parsed command-line arguments
-        self.debug_mode = args.debug if args else False
-        #set_ppf_debug_mode(self.debug_mode)
-
-        # Initialise the BIN Merger, the CRC Verifier and the PPF Patcher classes
-        self.bin_merger = BinMerger(debug_mode=self.debug_mode)
-        self.crc_verifier = CrcFileVerifier(debug_mode=self.debug_mode)
-        self.ppf_patcher = PPFProcessor(debug_mode=self.debug_mode)
 
         self._debug_print(f'\nPSIO Game Assistant v{self.CURRENT_REVISION}')
 
@@ -249,7 +251,7 @@ class PSIOGameAssistant:
             self._debug_print('RENAMING THE GAME FILES USING REDUMP...')
             self.label_progress.configure(text=f'{self.PROGRESS_STATUS} Renaming - {game_name}')
 
-            redump_game_name = get_redump_name(game_id)
+            redump_game_name = self.db.get_redump_name(game_id)
             self._debug_print(f'Redump Game Name: {redump_game_name}')
 
             if redump_game_name is not None and redump_game_name != "":
@@ -290,7 +292,7 @@ class PSIOGameAssistant:
 
         # Get the game cover art from the database and copy it to the local directory
         game_full_path = join(game.get_directory_path(), game.get_directory_name())
-        copy_game_cover(game_full_path, game_id, game_name)
+        self.db.copy_game_cover(game_full_path, game_id, game_name)
 
         # If the game cover has been copied, update the game object cover details
         if exists(join(game_full_path, f'{game_name}.bmp')):
@@ -305,12 +307,12 @@ class PSIOGameAssistant:
         if not game.get_libcrypt_required():
             return
 
-        if libcrypt_patch_available(game.get_id()):
+        if self.db.libcrypt_patch_available(game.get_id()):
             self._debug_print('PATCHING BIN FILE...')
 
             # Get the LibCrypt PPF patch from the database and copy it to the local directory
             game_full_path = join(game.get_directory_path(), game.get_directory_name())
-            copy_libcrypt_patch(game_full_path, game.get_id())
+            self.db.copy_libcrypt_patch(game_full_path, game.get_id())
 
             game_path = join(game.get_directory_path(), game.get_directory_name())
             bin_path = game.get_cue_sheet().get_bin_files()[0].get_file_path()
@@ -849,13 +851,13 @@ class PSIOGameAssistant:
         # Get the game details from the BIN files
         game_id = self._get_game_id(bin_files[0].get_file_path()) if bin_files else None
 
-        disc_number = get_disc_number(game_id) if game_id else 0
+        disc_number = self.db.get_database_disc_number(game_id) if game_id else 0
         game_name = Path(bin_files[0].get_file_name()).stem
         bin_path = join(game_directory_path, f'{game_name}.bin')
         disc_collection = self._get_disc_collection(bin_path) if game_name else []
 
         # Get libcrypt status
-        libcrypt_required = get_libcrypt_status(game_id) if game_id else False
+        libcrypt_required = self.db.get_libcrypt_status(game_id) if game_id else False
 
         # Create Cuesheet object
         the_cue_sheet = Cuesheet(cue_sheet, cue_sheet_path, game_name)
@@ -887,7 +889,7 @@ class PSIOGameAssistant:
         """PGet the Redump track data from the local database"""
 
         # Get the Redmup track info from the local database
-        redump_tracks = get_track_info(game.get_id())
+        redump_tracks = self.db.get_track_info(game.get_id())
 
         # Convert to expected format
         tracks = []
@@ -1183,7 +1185,7 @@ class PSIOGameAssistant:
             # Check if the game requires LibCrypt patching and if a patch is available
             patch_available = "*"
             if game.get_libcrypt_required():
-                patch_available = "Yes" if libcrypt_patch_available(game.get_id()) else "No"
+                patch_available = "Yes" if self.db.libcrypt_patch_available(game.get_id()) else "No"
 
             # Check if the CRC-32 matches the data from the PlayStation Redump project
             crc_32 = "Yes" if game.get_crc_valid() else "No"
@@ -1438,7 +1440,7 @@ class PSIOGameAssistant:
         self.button_start = Button(self.window, text='Process', command=self._start_button_clicked, state=DISABLED)
         self.button_start.place(x=30, y=frame_y +140, width=window_width -50, height=30)
 
-        self.label_progress.after(1000, ensure_database_exists)
+        self.label_progress.after(1000, self.db.ensure_database_exists())
     # ************************************************************************************
 
 
