@@ -1,12 +1,12 @@
 # PSIO Game Manager
 GUI application to prepare PlayStation 1 bin/cue games for use with a PSIO device.<br>
-Works on Linux, Mac and Windows.<br>
 
 ![alt text](https://github.com/logi-26/psio-assist/blob/v0.2/image.png?raw=true)
 
 **This application:**<br/>
 Organises and standardises PlayStation 1 games into a format acceptable by the PSIO device. It performs the following tasks:<br/>
 
+- Works on Linux, Mac and Windows.<br/>
 - Works in batch mode on all selected games.<br/>
 - Performs CRC-32 checks of each data track using data from the PlayStation Redump project.<br/>
 - Merges multi-bin games into a single bin file.<br/>
