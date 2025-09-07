@@ -61,15 +61,26 @@ class BinMerger:
             return False
 
         chunk_size = 1024 * 1024
+
+        # Track the offset for each BIN file
+        current_offset = 0
+
         with open(merged_bin_path, 'wb') as outfile:
+            # Loop through the BIN files
             for bin_file in bin_files:
+                self._debug_print(f"Merging BIN file: {bin_file.get_file_name()} at offset 0x{current_offset:X}")
+                file_size = 0  # Track size of current file
+
                 with open(bin_file.get_file_path(), 'rb') as in_file:
-                    self._debug_print(f"Merging BIN file: {bin_file.get_file_name()}")
                     while True:
                         chunk = in_file.read(chunk_size)
                         if not chunk:
                             break
                         outfile.write(chunk)
+                        file_size += len(chunk)
+
+                # Update offset after writing file
+                current_offset += file_size
 
         return True
     # ************************************************************************************
