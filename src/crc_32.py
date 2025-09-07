@@ -28,12 +28,38 @@ class CrcFileVerifier:
 
 
     # ************************************************************************************
-    def calculate_crc32(self, file_path: str, start_byte: int = 0, max_bytes=None):
+    def compute_start_sectors(self, redump_tracks: list, include_pregap: bool = True) -> list:
+        """Compute start sectors for tracks, optionally including pregaps"""
+        start_sectors = []
+        curr_sector = 0
+
+        # Loop through the Redump tracks
+        for track in redump_tracks:
+
+            # Calculate the start sector
+            start_sectors.append(curr_sector)
+            sectors = int(track['sectors']) if track['sectors'] is not None else 0
+            pregap = int(track['pregap']) if track['pregap'] is not None else 0
+            curr_sector += sectors + (pregap if include_pregap else 0)
+
+        # Return the list of start sectors for the tracks
+        return start_sectors
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def calculate_crc32(self, file_path: str, start_byte: int = 0, max_bytes=None) -> str:
         """Calculate CRC-32 for a file segment"""
         crc32_hash = 0
+
+        # Open the BIN file
         with open(file_path, 'rb') as f:
+
+            # Seek to the start byte
             f.seek(start_byte)
             bytes_read = 0
+
+            # Read the chunk and perform CRC hash
             while chunk := f.read(8192):
                 if max_bytes is not None and bytes_read + len(chunk) > max_bytes:
                     chunk = chunk[:max_bytes - bytes_read]
@@ -41,22 +67,36 @@ class CrcFileVerifier:
                 bytes_read += len(chunk)
                 if max_bytes is not None and bytes_read >= max_bytes:
                     break
+
+        # Return the CRC hash
         return format(crc32_hash & 0xFFFFFFFF, '08X').lower()
     # ************************************************************************************
 
 
     # ************************************************************************************
-    def _parse_cue_tracks(self, cuesheet: Cuesheet) -> list:
+    def _parse_cue_tracks(self, cuesheet: Cuesheet, start_sectors=None) -> list:
         """Extract track information and BIN file paths from a populated Cuesheet object"""
         tracks = []
+
+        # Track counter for start_sectors indexing
+        track_index = 0
+
+        # Loop through the associated BIN files
         for bin_file in cuesheet.get_bin_files():
             bin_file_path = bin_file.get_file_path()
+
+            # Loop through the tracks in the BIN file
             for track in bin_file.get_tracks():
+                # Extract track-specific data
                 track_info = {
                     'file': bin_file_path,
-                    'start_sector': track.get_sectors() if track.get_sectors() is not None else 0
+                    'track_number': track.get_track_number() if hasattr(track, 'get_track_number') else track_index + 1,
+                    'start_sector': start_sectors[track_index] if start_sectors is not None and track_index < len(start_sectors) else 0
                 }
                 tracks.append(track_info)
+                track_index += 1
+
+        # Return the list of tracks
         return tracks
     # ************************************************************************************
 
@@ -68,26 +108,40 @@ class CrcFileVerifier:
             print(f"(Error) CUE file '{cuesheet.get_file_path()}' does not exist!")
             return False
 
-        self._debug_print("\nPerforming CRC-32 checks...")
+        self._debug_print("\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        self._debug_print("Performing CRC-32 checks...")
 
-        # Parse CUE file
+        # Parse tracks using the CUE file
         cue_tracks = self._parse_cue_tracks(cuesheet)
 
+        # Print a warning and return if the number of tracks do not match
         if len(cue_tracks) != len(redump_tracks):
             print(f"\n(Warning) CUE file has {len(cue_tracks)} tracks, "
                 f"but database expects {len(redump_tracks)} tracks!")
             print(f"game name: {cuesheet.get_game_name()}\n")
             return False
 
-        # Detect single BIN or multiple BIN files
+        # Detect if it is a single BIN or multiple BIN files
         bin_files = list(set(track['file'] for track in cue_tracks if track['file']))
         single_bin = len(bin_files) == 1
 
-        self._debug_print(f"Detected: {'Single BIN file' if single_bin else 'Multiple BIN files'} "
-                 f"({len(bin_files)} BIN file(s))\n")
+        if single_bin:
+            # Compute start sectors for each track, excluding pregaps for merged BIN
+            start_sectors = self.compute_start_sectors(redump_tracks, include_pregap=False)
+            for i, cue_track in enumerate(cue_tracks):
+                cue_track['start_sector'] = start_sectors[i]
+
+        # Print debug info
+        if single_bin:
+            if len(redump_tracks) > 1:
+                self._debug_print("\nDetected: Single BIN file")
+                self._debug_print(f"Contains multiple tracks ({len(redump_tracks)}) - the BIN was likely merged\n")
+        else:
+            self._debug_print(f"\nDetected: Multiple BIN file ({len(bin_files)})\n")
 
         all_tracks_passed = True
 
+        # Loop through the tracks
         for index, (cue_track, redump_track) in enumerate(zip(cue_tracks, redump_tracks), 1):
             track_num = redump_track["track"]
             expected_crc32 = redump_track["crc32"]
@@ -100,9 +154,7 @@ class CrcFileVerifier:
                 return False
 
             if single_bin:
-                # Single BIN - Use start_sector from CUE and database sector count
                 start_sector = cue_track.get('start_sector', 0)
-
                 start_byte = start_sector * self.sector_size
                 track_size_bytes = expected_sectors * self.sector_size
 
@@ -140,13 +192,10 @@ class CrcFileVerifier:
                 all_tracks_passed = False
 
             # Verify start sector (for single BIN)
-            if single_bin and 'start_sector' in cue_track:
-
+            if single_bin:
                 expected_start_sector = sum(
-                    (int(track["sectors"]) if track["sectors"] is not None else 0) +
-                    (int(track["pregap"]) if track["pregap"] is not None else 0)
-                    for track in redump_tracks[:index-1]
-                )
+                    int(track["sectors"]) for track in redump_tracks[:index-1]
+                )  # Exclude pregaps for merged BIN
 
                 if cue_track['start_sector'] != expected_start_sector:
                     print(f"\n(Warning) Track {track_num} - CUE start sector "
@@ -154,6 +203,9 @@ class CrcFileVerifier:
                         f"({expected_start_sector})")
                     print(f"game name: {cuesheet.get_game_name()}\n")
                     all_tracks_passed = False
+
+        self._debug_print(f"\nAll Tracks Passed CRC checks: {all_tracks_passed}")
+        self._debug_print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
 
         return all_tracks_passed
     # ************************************************************************************
