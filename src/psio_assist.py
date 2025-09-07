@@ -52,6 +52,7 @@ from json import load, dumps
 from argparse import ArgumentParser
 from re import search, sub, IGNORECASE
 from shutil import copyfile, move, rmtree
+from typing import Optional
 from tkinter import Menu, filedialog, StringVar, BooleanVar, TclError, PhotoImage
 from ttkbootstrap import Window, Floodgauge, Treeview, Style, Scrollbar, Labelframe, Label, Button, Checkbutton, NO, CENTER, VERTICAL
 from ttkbootstrap.dialogs import MessageDialog
@@ -374,14 +375,14 @@ class PSIOGameAssistant:
 
 
     # ************************************************************************************
-    def _is_first_disc_without_multidisc(self, game):
+    def _is_first_disc_without_multidisc(self, game: Game) -> bool:
         """Check if the game is the first disc without a multi-disc file."""
         return game.get_disc_number() == 1 and not game.get_multi_disc_file_present()
     # ************************************************************************************
 
 
     # ************************************************************************************
-    def _collect_multi_games(self, game):
+    def _collect_multi_games(self, game: Game):
         """Collect all games in the disc collection."""
         return [
             self._find_game_by_id(game_id.replace("_", "-"))
@@ -391,7 +392,7 @@ class PSIOGameAssistant:
 
 
     # ************************************************************************************
-    def _create_multi_disc_folder(self, multi_games):
+    def _create_multi_disc_folder(self, multi_games: list[Game]):
         """Create a folder for the multi-disc game collection."""
         game_folder = self._remove_disc_from_name(multi_games[0].get_cue_sheet().get_game_name())
         new_game_path = join(multi_games[0].get_directory_path(), game_folder)
@@ -402,7 +403,7 @@ class PSIOGameAssistant:
 
 
     # ************************************************************************************
-    def _process_disc_files(self, multi_games, new_game_path):
+    def _process_disc_files(self, multi_games: list[Game], new_game_path: str):
         """Move files for each disc and update game paths."""
         game_folder = self._remove_disc_from_name(multi_games[0].get_cue_sheet().get_game_name())
         for multi_disc in multi_games:
@@ -469,7 +470,7 @@ class PSIOGameAssistant:
 
 
     # ************************************************************************************
-    def _copy_multi_disc_cover_art(self, disc_1: Game, multi_games):
+    def _copy_multi_disc_cover_art(self, disc_1: Game, multi_games: list[Game]):
         """Duplicate the cover art from disc 1 for each of the multi-disc games, if missing"""
 
         self._debug_print("CHECKING COVER ART FOR MULTI-DISC GAME...")
@@ -527,7 +528,7 @@ class PSIOGameAssistant:
 
 
     # ************************************************************************************
-    def _detect_cdda(self, cue_file_path: str):
+    def _detect_cdda(self, cue_file_path: str) -> bool:
         """Reads a CUE file and determines if it uses CDDA (CD Digital Audio) tracks"""
         try:
             with open(cue_file_path, 'r', encoding="utf-8") as file:
@@ -703,21 +704,21 @@ class PSIOGameAssistant:
 
 
     # ************************************************************************************
-    def _is_multi_disc(self, game: Game):
+    def _is_multi_disc(self, game: Game) -> Optional[bool]:
         """Check if game is multi-disc"""
         return int(game.get_disc_number()) > 0 if game.get_disc_number() is not None else None
     # ************************************************************************************
 
 
     # ************************************************************************************
-    def _is_multi_bin(self, game: Game):
+    def _is_multi_bin(self, game: Game) -> bool:
         """Check if game has multiple bin files"""
         return len(game.get_cue_sheet().get_bin_files()) > 1
     # ************************************************************************************
 
 
     # ************************************************************************************
-    def _all_game_files_exist(self, game: Game):
+    def _all_game_files_exist(self, game: Game) -> bool:
         """Check if all required bin files exist"""
         for bin_file in game.get_cue_sheet().get_bin_files():
             if not exists(bin_file.get_file_path()):
@@ -727,7 +728,7 @@ class PSIOGameAssistant:
 
 
     # ************************************************************************************
-    def _get_game_id(self, bin_file_path: str):
+    def _get_game_id(self, bin_file_path: str) -> Optional[str]:
         """Get the unique game ID from BIN file"""
         game_disc_collection = self._get_disc_collection(bin_file_path)
         return game_disc_collection[0].replace('_', '-').replace('.', '').strip() if game_disc_collection else None
@@ -735,7 +736,7 @@ class PSIOGameAssistant:
 
 
     # ************************************************************************************
-    def _get_disc_collection(self, bin_file_path: str):
+    def _get_disc_collection(self, bin_file_path: str) -> list[str]:
         """
         Parse the unique game id from the BIN file
         Some games are multi-disc and the BIN file will have the id for each game in the collection
@@ -843,7 +844,7 @@ class PSIOGameAssistant:
 
         # Parse the BIN files and Tracks from the CUE file
         bin_files = self._parse_cue_file(cue_sheet_path)
-        self._print_bin_file_details(bin_files)
+        #self._print_bin_file_details(bin_files)
 
         # Get the game details from the BIN files
         game_id = self._get_game_id(bin_files[0].get_file_path()) if bin_files else None
@@ -882,8 +883,8 @@ class PSIOGameAssistant:
 
 
     # ************************************************************************************
-    def _crc_check_bin(self, game: Game) -> bool:
-        """Perform CRC-32 check on the BIN file/s and compare to the Redump data"""
+    def _get_redump_tracks(self, game: Game) -> list:
+        """PGet the Redump track data from the local database"""
 
         # Get the Redmup track info from the local database
         redump_tracks = get_track_info(game.get_id())
@@ -906,16 +907,26 @@ class PSIOGameAssistant:
                 "crc32": crc.lower()
             })
 
-        # Verify the tracks using the CUE file and Redump CRC-32 values
-        tracks_valid = self.crc_verifier.verify_tracks(game.get_cue_sheet(), tracks)
+        return tracks
+    # ************************************************************************************
 
-        self._debug_print(f"TRACKS VALID: {tracks_valid}\n")
+
+    # ************************************************************************************
+    def _crc_check_bin(self, game: Game) -> bool:
+        """Perform CRC-32 check on the BIN file/s and compare to the Redump data"""
+
+        # Get the Redmup track info from the local database
+        redump_tracks = self._get_redump_tracks(game)
+
+        # Verify the tracks using the CUE file and Redump CRC-32 values
+        tracks_valid = self.crc_verifier.verify_tracks(game.get_cue_sheet(), redump_tracks)
+
         return tracks_valid
     # ************************************************************************************
 
 
     # ************************************************************************************
-    def _cuestamp_to_sectors(self, timestamp):
+    def _cuestamp_to_sectors(self, timestamp: str) -> int:
         """Convert MM:SS:FF timestamp to sectors."""
         time = timestamp.split(':')
         if len(time) != 3:
@@ -926,7 +937,7 @@ class PSIOGameAssistant:
 
 
     # ************************************************************************************
-    def _parse_cue_file(self, cue_path):
+    def _parse_cue_file(self, cue_path: str) -> list[Binfile]:
         """Parse a CUE file to create Binfile objects with their Tracks and indexes"""
         bin_files = []
         current_file = None
@@ -1032,22 +1043,24 @@ class PSIOGameAssistant:
     # ************************************************************************************
     def _print_game_details(self, game: Game):
         """Print Game details for debugging"""
+        self._debug_print("\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         game_path = join(game.get_directory_path(), game.get_directory_name())
-        self._debug_print(f'Game Path: {game_path}')
         self._debug_print(f'Game ID: {game.get_id()}')
         self._debug_print(f'Game Name: {game.get_cue_sheet().get_game_name()}')
+        self._debug_print(f'Game Path: {game_path}')
         self._debug_print(f'Disc Number: {game.get_disc_number()}')
         self._debug_print(f'Number of Bin Files: {len(game.get_cue_sheet().get_bin_files())}')
         if game.get_disc_collection():
             self._debug_print(f'Disc Collection: {game.get_disc_collection()}')
         self._debug_print(f'Has Cover ART: {game.get_cover_art_present()}')
         self._debug_print(f'CU2 Required: {game.get_cu2_required()}')
-        self._debug_print(f'Has CU2: {game.get_cu2_present()}\n')
+        self._debug_print(f'Has CU2: {game.get_cu2_present()}')
+        self._debug_print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n")
     # ************************************************************************************
 
 
     # ************************************************************************************
-    def _print_bin_file_details(self, bin_files):
+    def _print_bin_file_details(self, bin_files: list[Binfile]):
         """Print BIN file details for debugging"""
         self._debug_print("\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         self._debug_print("BIN FILES:")
