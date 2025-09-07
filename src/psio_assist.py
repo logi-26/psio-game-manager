@@ -153,6 +153,13 @@ class PSIOGameAssistant:
 
 
     # ************************************************************************************
+    def _set_progress_text(self, message: str):
+        """Set the text in the progress label"""
+        self.label_progress.configure(text=f"Status: {message}")
+    # ************************************************************************************
+
+
+    # ************************************************************************************
     def process_games(self):
         """Process the games in the game list"""
 
@@ -163,7 +170,8 @@ class PSIOGameAssistant:
 
             # Display the game name in the progress label
             game_name = game.get_cue_sheet().get_game_name()
-            self.label_progress.configure(text=f'{self.PROGRESS_STATUS} Processing - {game_name}')
+            self._set_progress_text(f"Processing - {game_name}")
+            self._update_progress_bar(0)
 
             self._debug_print('\n***********************************************************')
             self._debug_print(f'GAME_ID: {game.get_id()}')
@@ -171,28 +179,37 @@ class PSIOGameAssistant:
 
             # Merge multi-bin files
             self._merge_multi_bin_files(game)
+            self._update_progress_bar(30)
 
             # Generate CU2 file for games with CCDA audio
             self._generate_cu2_file(game)
+            self._update_progress_bar(40)
 
             # Rename the game using the game name from the Redump project
             self._rename_game_using_redump(game)
+            self._update_progress_bar(50)
 
             # Validate the game name
             self._validate_game_name(game)
+            self._update_progress_bar(60)
 
             # Add the game cover art
             self._add_game_cover_art(game)
+            self._update_progress_bar(70)
 
             # Apply LibCrypt PPF patch
             self._apply_libcrypt_patch(game)
+            self._update_progress_bar(90)
 
             self._debug_print('***********************************************************\n')
 
         # Generate multi-disc games after all of the other processes have been completed
         self._generate_multidisc_files()
+        self._set_progress_text("Generating multi-disc files...")
 
-        self.label_progress.configure(text=self.PROGRESS_STATUS)
+        # Clear the progress status
+        self._update_progress_bar(100)
+        self._set_progress_text("")
 
         # Update the game list in the GUI
         self._display_game_list()
@@ -210,8 +227,7 @@ class PSIOGameAssistant:
 
         if len(game.get_cue_sheet().get_bin_files()) > 1:
             self._debug_print('MERGING BIN FILES...')
-            label_text = f'{self.PROGRESS_STATUS} Merging bin files - {game_name}'
-            self.label_progress.configure(text=label_text)
+            self._set_progress_text(f"Merging bin files - {game_name}")
             self._merge_bin_files(game)
 
             bin_path = cue_full_path[:-4] + ".bin"
@@ -231,8 +247,7 @@ class PSIOGameAssistant:
 
         if game.get_cu2_required() and not game.get_cu2_present():
             self._debug_print('GENERATING CU2...')
-            label_text = f'{self.PROGRESS_STATUS} Generating cu2 file - {game_name}'
-            self.label_progress.configure(text=label_text)
+            self._set_progress_text(f"Generating cu2 file - {game_name}")
 
             # Generate the CU2 file
             cu2_generated = start_cue2cu2(cue_full_path, f'{game_name}.bin')
@@ -246,18 +261,21 @@ class PSIOGameAssistant:
     def _rename_game_using_redump(self, game: Game):
         """Rename the game using the game name from the Redump project"""
         if self.redump_rename.get():
-            game_id = game.get_id()
-            game_name = game.get_cue_sheet().get_game_name()
             self._debug_print('RENAMING THE GAME FILES USING REDUMP...')
-            self.label_progress.configure(text=f'{self.PROGRESS_STATUS} Renaming - {game_name}')
 
+            game_id = game.get_id()
             redump_game_name = self.db.get_redump_name(game_id)
             self._debug_print(f'Redump Game Name: {redump_game_name}')
 
             if redump_game_name is not None and redump_game_name != "":
+                # Validate the Redump game name
+                self._set_progress_text(f"Validating redump game name - {redump_game_name}")
+                self._debug_print(f'Validating redump game name: {redump_game_name}')
                 redump_name = self._game_name_validator(redump_game_name)
 
-                self._debug_print(f'Validated Redump Game Name: {redump_name}')
+                # Rename the game
+                self._set_progress_text(f"Renaming game - {redump_name}")
+                self._debug_print(f'Renaming game: {redump_name}')
                 self._rename_game(game, redump_name)
     # ************************************************************************************
 
@@ -268,11 +286,11 @@ class PSIOGameAssistant:
         game_name = game.get_cue_sheet().get_game_name()
         if len(game_name) > self.MAX_GAME_NAME_LENGTH or '.' in game_name:
             self._debug_print('FIXING THE GAME NAME...')
-            label_text = f'{self.PROGRESS_STATUS} Validating name - {game_name}'
-            self.label_progress.configure(text=label_text)
+            self._set_progress_text(f"Validating name - {game_name}")
 
             new_game_name = self._game_name_validator(game_name).strip()
             self._debug_print(f'Fixed Game Name: {new_game_name}')
+            self._set_progress_text(f"Fixed game name - {new_game_name}")
             if new_game_name != game_name:
                 self._rename_game(game, new_game_name)
     # ************************************************************************************
@@ -288,7 +306,7 @@ class PSIOGameAssistant:
             return
 
         self._debug_print('ADDING THE GAME COVER ART...')
-        self.label_progress.configure(text=f'{self.PROGRESS_STATUS} Adding cover art - {game_name}')
+        self._set_progress_text(f"Adding cover art - {game_name}")
 
         # Get the game cover art from the database and copy it to the local directory
         game_full_path = join(game.get_directory_path(), game.get_directory_name())
@@ -309,6 +327,7 @@ class PSIOGameAssistant:
 
         if self.db.libcrypt_patch_available(game.get_id()):
             self._debug_print('PATCHING BIN FILE...')
+            self._set_progress_text(f"Applying PPF patch to game - {game.get_cue_sheet().get_game_name()}")
 
             # Get the LibCrypt PPF patch from the database and copy it to the local directory
             game_full_path = join(game.get_directory_path(), game.get_directory_name())
@@ -585,7 +604,7 @@ class PSIOGameAssistant:
                 return
 
         # Merge the multiple BIN files into a single BIN file
-        self.label_progress.configure(text=f'{self.PROGRESS_STATUS} Merging bin files')
+        self._set_progress_text("Merging bin files")
 
         # Merge the BIN files
         bin_merged = self.bin_merger.merge(game_name, cue_file_name, bin_files, temp_game_dir)
@@ -790,6 +809,10 @@ class PSIOGameAssistant:
         self.game_list = []
         sub_folders = self._get_sub_folders(selected_path)
         self._debug_print('\nGAME DETAILS:\n')
+        self._set_progress_text("Generating game list...")
+
+        if not sub_folders:
+            return
 
         for sub_folder in sub_folders:
             self._process_sub_folder(selected_path, sub_folder)
@@ -835,29 +858,36 @@ class PSIOGameAssistant:
         """Create a Game object from a CUE sheet."""
         cue_sheet_path = join(game_directory_path, cue_sheet)
 
+        self._set_progress_text(f"Parsing Game: {str(Path(game_directory_path))}")
+
         # Check for cover art
         cover_art_path = join(game_directory_path, cue_sheet[:-3])
         cover_art_present = exists(f'{cover_art_path}bmp') or exists(f'{cover_art_path}BMP')
+        self._update_progress_bar(20)
 
         # Check for multi-disc and CU2 files
         multi_disc_file_present = exists(join(game_directory_path, 'MULTIDISC.LST'))
         cu2_present = exists(join(game_directory_path, f'{cue_sheet[:-3]}cu2'))
         cu2_required = self._detect_cdda(cue_sheet_path)
+        self._update_progress_bar(30)
 
         # Parse the BIN files and Tracks from the CUE file
         bin_files = self._parse_cue_file(cue_sheet_path)
-        #self._print_bin_file_details(bin_files)
+        self._update_progress_bar(40)
 
         # Get the game details from the BIN files
         game_id = self._get_game_id(bin_files[0].get_file_path()) if bin_files else None
+        self._update_progress_bar(50)
 
         disc_number = self.db.get_database_disc_number(game_id) if game_id else 0
         game_name = Path(bin_files[0].get_file_name()).stem
         bin_path = join(game_directory_path, f'{game_name}.bin')
         disc_collection = self._get_disc_collection(bin_path) if game_name else []
+        self._update_progress_bar(60)
 
         # Get libcrypt status
         libcrypt_required = self.db.get_libcrypt_status(game_id) if game_id else False
+        self._update_progress_bar(70)
 
         # Create Cuesheet object
         the_cue_sheet = Cuesheet(cue_sheet, cue_sheet_path, game_name)
@@ -865,6 +895,8 @@ class PSIOGameAssistant:
         # Add the BIN files to the Cuesheet object
         for bin_file in bin_files:
             the_cue_sheet.add_bin_file(bin_file)
+
+        self._update_progress_bar(80)
 
         # Create the Game object
         the_game =  Game(
@@ -875,11 +907,13 @@ class PSIOGameAssistant:
 
         # Perform CRC-32 check on each BIN file from the Game
         crc_valid = self._crc_check_bin(the_game)
+        self._update_progress_bar(90)
 
         # Update the Game objects crc_valid value
         the_game.set_crc_valid(crc_valid)
 
         # Return the Game object
+        self._update_progress_bar(90)
         return the_game
     # ************************************************************************************
 
@@ -1027,6 +1061,9 @@ class PSIOGameAssistant:
     def _get_sub_folders(self, selected_path: str) -> list:
         """Get a list of sub-folders in the selected source directory"""
 
+        if not selected_path or selected_path == "":
+            return
+
         sub_folders = [
             f.name for f in scandir(selected_path)
             if f.is_dir()
@@ -1103,6 +1140,8 @@ class PSIOGameAssistant:
         multi_bin_games = 0
         invalid_named_games = 0
 
+        self._set_progress_text("Generating Game List...")
+
         # Loop through the game list
         for game in self.game_list:
             bin_files = game.get_cue_sheet().get_bin_files()
@@ -1133,7 +1172,7 @@ class PSIOGameAssistant:
             if len(game_name) > self.MAX_GAME_NAME_LENGTH or '.' in game_name:
                 invalid_named_games +=1
 
-        # Display a message dialog box showing the counts  
+        # Display a message dialog box showing the counts
         message = (
             f"Total Discs Found: {len(self.game_list)}\n"
             f"Multi-Disc Games: {multi_disc_games}\n"
@@ -1143,13 +1182,18 @@ class PSIOGameAssistant:
             f"Invalid Game Names: {invalid_named_games}"
         )
 
+        self._set_progress_text("")
+        self._update_progress_bar(100)
+
         md = MessageDialog(
             message,
             title='Game Details',
             width=650,
             padding=(20, 20)
         )
-        md.show()
+
+        if self.debug_mode:
+            md.show()
 
         self._display_game_list()
         self._update_window()
