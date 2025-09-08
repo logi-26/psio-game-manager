@@ -19,6 +19,7 @@ class Game:
         self._cu2_required = cu2_required
         self._multi_disc_file_present = multi_disc_file_present
         self._libcrypt_required = libcrypt_required
+        self._libcrypt_applied = False
         self._crc_valid = None
         self._cue_sheet: Cuesheet = cue_sheet
 
@@ -91,6 +92,13 @@ class Game:
 
     def set_libcrypt_required(self, value):
         self._libcrypt_required = value
+
+    # Getter and setter for _libcrypt_applied
+    def get_libcrypt_applied(self):
+        return self._libcrypt_applied
+
+    def set_libcrypt_applied(self, value):
+        self._libcrypt_applied = value
 
     # Getter and setter for cue_sheet
     def get_cue_sheet(self):

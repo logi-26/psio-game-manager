@@ -91,6 +91,87 @@ class PPFProcessor:
 
 
     # ************************************************************************************
+    def is_ppf_patch_applied(self, bin_file: BinaryIO, ppf_file: BinaryIO) -> bool:
+        """Checks if a PPF patch has already been applied to a BIN file by comparing bytes at patch offsets"""
+        # Get PPF version
+        ppf_ver = self.get_ppf_version(ppf_file)
+        if ppf_ver == 0:
+            print("(Error) Invalid PPF file")
+            return False
+
+        self._debug_print(f"Checking if PPF{ppf_ver}.0 patch is already applied...")
+
+        # Initialise variables based on PPF version
+        if ppf_ver == 1:
+            # Start of patch data for PPF1
+            ppf_file.seek(56)
+            count = ppf_file.seek(0, SEEK_END) - 56
+            seek_pos = 56
+            # 32-bit offsets
+            offset_size = 4
+        elif ppf_ver == 2:
+            ppf_file.seek(56)
+            id_len = self._show_file_id(ppf_file, 2)
+            seek_pos = 1084
+            count = ppf_file.seek(0, SEEK_END) - seek_pos
+            if id_len:
+                count -= id_len + 38
+            # 32-bit offsets
+            offset_size = 4
+        else:  # PPF3
+            ppf_file.seek(57)
+            block_check = ppf_file.read(1)[0]
+            id_len = self._show_file_id(ppf_file, 3)
+            seek_pos = 1084 if block_check else 60
+            count = ppf_file.seek(0, SEEK_END) - seek_pos
+            if id_len:
+                count -= id_len + 18 + 16 + 2
+            # 64-bit offsets
+            offset_size = 8
+
+        # Check each patch chunk
+        while count > 0:
+            ppf_file.seek(seek_pos)
+            # Read offset (32-bit for PPF1/PPF2, 64-bit for PPF3)
+            offset = unpack('<Q' if ppf_ver == 3 else '<I', ppf_file.read(offset_size))[0]
+
+            # Number of bytes to patch
+            anz = ppf_file.read(1)[0]
+
+            # Bytes to compare
+            patch_bytes = ppf_file.read(anz)
+
+            # Read bytes from BIN file at the offset
+            bin_file.seek(offset)
+            bin_bytes = bin_file.read(anz)
+
+            # Compare bytes
+            if bin_bytes != patch_bytes:
+                self._debug_print(
+                    f"Mismatch at offset 0x{offset:08x}: "
+                    f"Expected {patch_bytes.hex()}, Found {bin_bytes.hex()}"
+                )
+                return False
+
+            self._debug_print(
+                f"Match at offset 0x{offset:08x}: {patch_bytes.hex()}"
+            )
+
+            # Update counters
+            seek_pos += offset_size + 1 + anz
+            count -= offset_size + 1 + anz
+
+            # Skip the undo data in PPF3 patch files if present
+            if ppf_ver == 3:
+                ppf_file.seek(anz, SEEK_CUR)
+                count -= anz
+
+        self._debug_print("All patch bytes match. Patch is already applied.")
+        return True
+    # ************************************************************************************
+
+
+    # ************************************************************************************
     def apply_ppf1_patch(self, ppf_file: BinaryIO, bin_file: BinaryIO):
         """Applies a PPF1.0 patch"""
         ppf_file.seek(6)

@@ -323,7 +323,8 @@ class PSIOGameManager:
     def _apply_libcrypt_patch(self, game: Game):
         """Apply LibCrypt PPF patch"""
 
-        if not game.get_libcrypt_required():
+        # Return if the game does not require LibCrypt patching or has already been patched
+        if not game.get_libcrypt_required() or game.get_libcrypt_applied():
             return
 
         if self.db.libcrypt_patch_available(game.get_id()):
@@ -340,7 +341,6 @@ class PSIOGameManager:
 
             # If the PPF patch file has been copied, patch the BIN file
             if exists(ppf_path):
-                #bin_file, ppf_file = open_files_for_patching(bin_path, ppf_path)
                 bin_file, ppf_file = self.ppf_patcher.open_files(bin_path, ppf_path)
 
                 self._debug_print("Applying patch...")
@@ -906,6 +906,9 @@ class PSIOGameManager:
             multi_disc_file_present, libcrypt_required
         )
 
+        # Check if a LibCrypt patch has already been applied to the BIN file
+        self._libcrypt_already_applied(the_game)
+
         # Perform CRC-32 check on each BIN file from the Game
         crc_valid = self._crc_check_bin(the_game)
         self._update_progress_bar(90)
@@ -920,8 +923,49 @@ class PSIOGameManager:
 
 
     # ************************************************************************************
+    def _libcrypt_already_applied(self, game: Game) -> bool:
+        """Check if a LibCrypt patch has already been applied to the game"""
+
+        # Return if the game does not require LibCrypt patching
+        if not game.get_libcrypt_required():
+            return
+
+        self._debug_print("Checking if LibCrypt protected game already has patch applied...")
+
+        # If there is a PPF patch available in the local database for this game
+        if self.db.libcrypt_patch_available(game.get_id()):
+
+            # Get the LibCrypt PPF patch from the database and copy it to the local directory
+            game_full_path = join(game.get_directory_path(), game.get_directory_name())
+            self.db.copy_libcrypt_patch(game_full_path, game.get_id())
+
+            game_path = join(game.get_directory_path(), game.get_directory_name())
+            bin_path = game.get_cue_sheet().get_bin_files()[0].get_file_path()
+            ppf_path = f"{join(game_path, game.get_id())}.ppf"
+
+            # If the PPF patch file has been copied, patch the BIN file
+            if exists(ppf_path):
+                # Open the BIN and PPF files
+                bin_file, ppf_file = self.ppf_patcher.open_files(bin_path, ppf_path)
+                if bin_file and ppf_file:
+                    is_applied = self.ppf_patcher.is_ppf_patch_applied(bin_file, ppf_file)
+                    self._debug_print(f"LibCrypt Patch is {'already applied' if is_applied else 'not applied'}")
+
+                    # Close the PPF and BIN files
+                    bin_file.close()
+                    ppf_file.close()
+
+                    if is_applied:
+                        game.set_libcrypt_applied(True)
+
+                # Delete the extracted PPF file
+                remove(ppf_path)
+    # ************************************************************************************
+
+
+    # ************************************************************************************
     def _get_redump_tracks(self, game: Game) -> list:
-        """PGet the Redump track data from the local database"""
+        """Get the Redump track data from the local database"""
 
         # Get the Redmup track info from the local database
         redump_tracks = self.db.get_track_info(game.get_id())
@@ -1227,17 +1271,17 @@ class PSIOGameManager:
             # Check if the cover art is available
             bmp_present = bools[game.get_cover_art_present()]
 
-            # Check if the game requires LibCrypt patching and if a patch is available
-            patch_available = "*"
+            # Check if the game uses LibCrypt encryption and if a patch has already been applied
+            libcrypt_patch = "*"
             if game.get_libcrypt_required():
-                patch_available = "Yes" if self.db.libcrypt_patch_available(game.get_id()) else "No"
+                libcrypt_patch = "Yes" if game.get_libcrypt_applied() else "No"
 
             # Check if the CRC-32 matches the data from the PlayStation Redump project
             crc_32 = "Yes" if game.get_crc_valid() else "No"
 
             # Insert the data into the tree-view
             self.treeview_game_list.insert(parent='', index=count, iid=count, text='',
-                                        values=(game_id, game_name, disc_number, number_of_bins, crc_32, name_valid, bmp_present, cu2_present, lst_present, patch_available))
+                                        values=(game_id, game_name, disc_number, number_of_bins, crc_32, name_valid, bmp_present, cu2_present, lst_present, libcrypt_patch))
     # ************************************************************************************
 
 
