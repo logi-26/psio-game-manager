@@ -10,8 +10,8 @@ Organises and standardises PlayStation 1 games into a format acceptable by the P
 - Works on Linux, Mac and Windows.
 - Works in batch mode on all selected games.
 - Performs CRC-32 checks of each data track using data from the PlayStation Redump project.
-- Merges all multi-bin games into a single bin files.
-- Generates cu2 files for all games that use CDDA audio.
+- Merges all multi-bin games into single bin files.
+- Generates CU2 files for all games that use CDDA audio.
 - Adds game cover images for games that do not have them.
 - Ensures that game names are not greater than 60 characters and do not contain invalid characters.
 - Generates the MULTIDISC.LST file for all multi-disc games and organises them into a single directory.
@@ -327,10 +327,10 @@ This project requires Python 3 and the following Python packages:
 
 ## Usage
 1. **Using the GUI**:
-   - Click on the **Browse** button and select the directory that contains your bin/cue files.
+   - Click on the **Browse** button and select the root directory that contains your PlayStation games.
    - OPTIONAL: Select to rename all games using the game names from the PlayStation Redump project.
    - Click on the **Process** button to process the games.
-   - The progress bar will display the progress of the application.
+   - The progress bar will display the progress of the application and current status.
 
 2. **OPTIONAL: Run the application with debug print logs**:
    - Run the script using the -d commandline argument:
