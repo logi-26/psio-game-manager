@@ -948,18 +948,16 @@ class PSIOGameManager:
                 # Open the BIN and PPF files
                 bin_file, ppf_file = self.ppf_patcher.open_files(bin_path, ppf_path)
                 if bin_file and ppf_file:
-                    is_applied = self.ppf_patcher.is_ppf_patch_applied(bin_file, ppf_file)
-                    self._debug_print(f"LibCrypt Patch is {'already applied' if is_applied else 'not applied'}")
+                    with bin_file, ppf_file:
+                        is_applied = self.ppf_patcher.is_ppf_patch_applied(bin_file, ppf_file)
+                        self._debug_print(f"LibCrypt Patch is {'already applied' if is_applied else 'not applied'}")
 
-                    # Close the PPF and BIN files
-                    bin_file.close()
-                    ppf_file.close()
+                        # Update the Game object to show that the LibCrypt checks have already been patched
+                        if is_applied:
+                            game.set_libcrypt_applied(True)
 
-                    if is_applied:
-                        game.set_libcrypt_applied(True)
-
-                # Delete the extracted PPF file
-                remove(ppf_path)
+                    # Delete the extracted PPF file
+                    remove(ppf_path)
     # ************************************************************************************
 
 
