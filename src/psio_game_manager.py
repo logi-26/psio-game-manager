@@ -192,15 +192,18 @@ class PSIOGameManager:
 
             # Validate the game name
             self._validate_game_name(game)
-            self._update_progress_bar(60)
+            self._update_progress_bar(65)
 
             # Add the game cover art
             self._add_game_cover_art(game)
-            self._update_progress_bar(70)
+            self._update_progress_bar(75)
 
             # Apply LibCrypt PPF patch
             self._apply_libcrypt_patch(game)
-            self._update_progress_bar(90)
+            self._update_progress_bar(95)
+
+            # Update the game list in the GUI after each game has been processed
+            self._display_game_list()
 
             self._debug_print('***********************************************************\n')
 
@@ -345,18 +348,18 @@ class PSIOGameManager:
 
                 self._debug_print("Applying patch...")
                 with bin_file, ppf_file:
-                    #version = ppf_version(ppf_file)
                     version = self.ppf_patcher.get_ppf_version(ppf_file)
 
                     if version == 1:
-                        #apply_ppf1_patch(ppf_file, bin_file)
                         self.ppf_patcher.apply_ppf1_patch(ppf_file, bin_file)
                     elif version == 2:
-                        #apply_ppf2_patch(ppf_file, bin_file)
                         self.ppf_patcher.apply_ppf2_patch(ppf_file, bin_file)
                     elif version == 3:
-                        #apply_ppf3_patch(ppf_file, bin_file)
                         self.ppf_patcher.apply_ppf3_patch(ppf_file, bin_file)
+
+                    # Update the Game object to show that the patch has been applied
+                    game.set_libcrypt_applied(True)
+                    game.set_crc_valid(False)
 
                 # Delete the PPF patch file after it has been applied to the BIN file
                 remove(ppf_path)
@@ -829,10 +832,15 @@ class PSIOGameManager:
         cue_sheets = self._find_cue_sheets(game_directory_path)
 
         for cue_sheet in cue_sheets:
+            # Create the Game object
             game = self._create_game_from_cue(game_directory_path, cue_sheet, sub_folder, selected_path)
             if game:
+                # Add the Game to the game list
                 self.game_list.append(game)
                 self._print_game_details(game)
+
+                # Update the displayed game list after each game is processed
+                self._display_game_list()
     # ************************************************************************************
 
 
@@ -917,7 +925,7 @@ class PSIOGameManager:
         the_game.set_crc_valid(crc_valid)
 
         # Return the Game object
-        self._update_progress_bar(90)
+        self._update_progress_bar(100)
         return the_game
     # ************************************************************************************
 
