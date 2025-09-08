@@ -26,17 +26,19 @@ https://github.com/logi-26/psio-game-manager/releases/tag/V0.3<br/>
   - For best performance, use the application with your games stored on a PC HDD and then transfer to an SD card.
   - The application requires the games cue sheet to identify the game.
   - If a game is a single disc game the disc number will be displayed as zero.
+##### Multi-disc LST
   - If a game is not part of a collection the LST will be displayed with an asterisk.
   - If a game is part of a collection and an LST file is not present the LST will be displayed with "No".
   - If a game is part of a collection and an LST file is present the LST will be displayed with "Yes".
+##### CU2
   - If a game does not require a CU2 file the CU2 will be displayed with an asterisk.
   - If a game does require a CU2 file and one is not present the CU2 will be displayed with "No".
   - If a game does require a CU2 file and one is present the CU2 will be displayed with "Yes".
+##### LibCrypt
   - If a game does not use LibCrypt the LibCrypt will be displayed with an asterisk.
-  - If a game does use LibCrypt but their is no patch available the LibCrypt will be displayed with "No".
-  - If a game does use LibCrypt and their is a patch available the LibCrypt will be displayed with "Yes".
-  - Once a game has had a LibCrypt patch applied the Redump CRC check will show as invalid.
-
+  - If a game does use LibCrypt and the BIN file has not been patched the LibCrypt will be displayed with "No".
+  - If a game does use LibCrypt and the BIN file has been patched the LibCrypt will be displayed with "Yes".
+  - Once a game has had a LibCrypt patch applied the Redump CRC check will show as "No".
 
 ## LibCrypt Patches
 <details>
