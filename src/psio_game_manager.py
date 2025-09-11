@@ -53,6 +53,7 @@ from json import load, dumps
 from argparse import ArgumentParser
 from re import search, sub, IGNORECASE
 from shutil import copyfile, move, rmtree
+from ast import literal_eval
 from typing import Optional
 from tkinter import Menu, filedialog, StringVar, BooleanVar, TclError, PhotoImage
 from ttkbootstrap import Window, Floodgauge, Treeview, Style, Scrollbar, Labelframe, Label, Button, Checkbutton, NO, CENTER, VERTICAL
@@ -382,6 +383,8 @@ class PSIOGameManager:
     def _process_multi_disc_games(self):
         """Process each game in the game list to handle multi-disc collections."""
         for game in self.game_list:
+
+            # Only process games that are disc 1 and LST file does not exist
             if not self._is_first_disc_without_multidisc(game):
                 continue
 
@@ -392,6 +395,7 @@ class PSIOGameManager:
             if len(multi_games) <= 1:
                 continue
 
+            # Move the game files into a single directory and create the LST file
             new_game_path = self._create_multi_disc_folder(multi_games)
             self._process_disc_files(multi_games, new_game_path)
             self._generate_lst_file(multi_games)
@@ -753,25 +757,13 @@ class PSIOGameManager:
 
 
     # ************************************************************************************
-    def _get_game_id(self, bin_file_path: str) -> Optional[str]:
-        """Get the unique game ID from BIN file"""
-        game_disc_collection = self._get_disc_collection(bin_file_path)
-        return game_disc_collection[0].replace('_', '-').replace('.', '').strip() if game_disc_collection else None
-    # ************************************************************************************
-
-
-    # ************************************************************************************
-    def _get_disc_collection(self, bin_file_path: str) -> list[str]:
-        """
-        Parse the unique game id from the BIN file
-        Some games are multi-disc and the BIN file will have the id for each game in the collection
-        """
-        game_disc_collection = []
+    def _parse_game_id(self, bin_file_path: str) -> Optional[str]:
+        """Parse the unique game ID from BIN file"""
         line = ''
         lines_checked = 0
 
         if not exists(bin_file_path):
-            return game_disc_collection
+            return
 
         # Open the games BIN file
         with open(bin_file_path, 'rb') as bin_file:
@@ -795,15 +787,30 @@ class PSIOGameManager:
                             start = line.find(region_code)
                             game_id = line[start:start + 11].replace('.', '').strip()
 
-                            # Add the game-id to the collection
-                            if game_id not in game_disc_collection:
-                                game_disc_collection.append(game_id)
-                            else:
-                                raise StopIteration
+                            # Return the game_id
+                            return game_id.replace('_', '-').replace('.', '').strip()
+
                 except StopIteration:
                     break
+    # ************************************************************************************
 
-        return game_disc_collection
+
+    # ************************************************************************************
+    def _get_disc_collection(self, game_id: str) -> Optional[str]:
+        """Parse the unique game id from the BIN file"""
+        print()
+        
+        
+        if not game_id:
+            return ''
+
+        formatted_game_id = game_id.replace('-', '_')
+        query = f'SELECT collection FROM games WHERE game_id = "{formatted_game_id}"'
+        response = self.select(query)
+        return response[0][0] if response else ''
+        
+        
+        
     # ************************************************************************************
 
 
@@ -885,14 +892,17 @@ class PSIOGameManager:
         self._update_progress_bar(40)
 
         # Get the game details from the BIN files
-        game_id = self._get_game_id(bin_files[0].get_file_path()) if bin_files else None
+        game_id = self._parse_game_id(bin_files[0].get_file_path()) if bin_files else None
         self._update_progress_bar(50)
 
         disc_number = self.db.get_database_disc_number(game_id) if game_id else 0
         game_name = Path(bin_files[0].get_file_name()).stem
-        bin_path = join(game_directory_path, f'{game_name}.bin')
-        disc_collection = self._get_disc_collection(bin_path) if game_name else []
+        disc_collection = self.db.get_database_disc_collection(game_id) if game_id else []
         self._update_progress_bar(60)
+
+        # Convert the disc collection into a list
+        if disc_collection:
+            disc_collection = literal_eval(disc_collection)
 
         # Get libcrypt status
         libcrypt_required = self.db.get_libcrypt_status(game_id) if game_id else False
@@ -976,8 +986,12 @@ class PSIOGameManager:
         # Get the Redmup track info from the local database
         redump_tracks = self.db.get_track_info(game.get_id())
 
-        # Convert to expected format
         tracks = []
+
+        if not redump_tracks:
+            return tracks
+
+        # Convert to expected format
         for row in redump_tracks:
             track_number, pregap, sectors, size, crc = row
             # Convert pregap (MM:SS:FF) to sectors

@@ -145,8 +145,8 @@ class CrcFileVerifier:
         for index, (cue_track, redump_track) in enumerate(zip(cue_tracks, redump_tracks), 1):
             track_num = redump_track["track"]
             expected_crc32 = redump_track["crc32"]
-            expected_size = int(redump_track["size"])
-            expected_sectors = int(redump_track["sectors"])
+            expected_size = int(redump_track["size"]) if redump_track["size"] not in (None, 'None') else None
+            expected_sectors = int(redump_track["sectors"]) if redump_track["sectors"] not in (None, 'None') else None
 
             bin_file = cue_track['file']
             if not bin_file or not exists(bin_file):
@@ -156,7 +156,7 @@ class CrcFileVerifier:
             if single_bin:
                 start_sector = cue_track.get('start_sector', 0)
                 start_byte = start_sector * self.sector_size
-                track_size_bytes = expected_sectors * self.sector_size
+                track_size_bytes = expected_sectors * self.sector_size if expected_sectors is not None else 0
 
                 # Verify track size
                 if track_size_bytes != expected_size:

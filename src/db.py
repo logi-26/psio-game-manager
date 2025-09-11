@@ -189,6 +189,19 @@ class GameDatabase:
 
 
     # ************************************************************************************
+    def get_database_disc_collection(self, game_id: str) -> str:
+        """Get the game collection from the local database"""
+        if not game_id:
+            return ''
+
+        formatted_game_id = game_id.replace('-', '_')
+        query = f'SELECT collection FROM games WHERE game_id = "{formatted_game_id}"'
+        response = self.select(query)
+        return response[0][0] if response else ''
+    # ************************************************************************************
+
+
+    # ************************************************************************************
     def get_redump_name(self, game_id: str) -> str:
         """Get game name from Redump/PSX Data-Centre stored in local database"""
         if not game_id:
