@@ -48,6 +48,7 @@ Copyright (C) 2021 LoGi26
 import sys
 from os import listdir, scandir, makedirs, remove, access, R_OK
 from os.path import exists, join, dirname, splitext, abspath, isfile, isabs
+#from pathlib import Path
 from time import sleep
 from json import load, dumps
 from argparse import ArgumentParser
@@ -209,8 +210,9 @@ class PSIOGameManager:
             self._debug_print('***********************************************************\n')
 
         # Generate multi-disc games after all of the other processes have been completed
-        self._generate_multidisc_files()
+        self._update_progress_bar(100)
         self._set_progress_text("Generating multi-disc files...")
+        self._generate_multidisc_files()
 
         # Clear the progress status
         self._update_progress_bar(100)
@@ -369,26 +371,25 @@ class PSIOGameManager:
 
     # ************************************************************************************
     def _generate_multidisc_files(self):
-        """Generate MULTIDISC.LST file for all multi-disc games"""
+        """Generate MULTIDISC.LST file for all multi-disc game"""
         multi_disc_games = [game for game in self.game_list if game.get_disc_number() > 0]
         if not multi_disc_games:
             return
 
         self._debug_print('\nGENERATING MULTI-DISC FILES...\n')
-        self._process_multi_disc_games()
-    # ************************************************************************************
 
-
-    # ************************************************************************************
-    def _process_multi_disc_games(self):
-        """Process each game in the game list to handle multi-disc collections."""
+        progress_increment = 100 / len(self.game_list)
         for game in self.game_list:
+
+            # Display the game name that is being merged
+            game_name = game.get_cue_sheet().get_game_name()
+            self._set_progress_text(f"Generating multi-disc for: {game_name}")
 
             # Only process games that are disc 1 and LST file does not exist
             if not self._is_first_disc_without_multidisc(game):
                 continue
 
-            self._debug_print(f'Game name: {game.get_cue_sheet().get_game_name()}')
+            self._debug_print(f'Game name: {game_name}')
             self._debug_print(f'Game disc collection: {game.get_disc_collection()}')
 
             multi_games = self._collect_multi_games(game)
@@ -400,6 +401,10 @@ class PSIOGameManager:
             self._process_disc_files(multi_games, new_game_path)
             self._generate_lst_file(multi_games)
             self._copy_multi_disc_cover_art(game, multi_games)
+
+            # Update the progress bar and the displayed game list
+            self._update_progress_bar(progress_increment)
+            self._display_game_list()
     # ************************************************************************************
 
 
@@ -423,7 +428,7 @@ class PSIOGameManager:
     # ************************************************************************************
     def _create_multi_disc_folder(self, multi_games: list[Game]):
         """Create a folder for the multi-disc game collection."""
-        game_folder = self._remove_disc_from_name(multi_games[0].get_cue_sheet().get_game_name())
+        game_folder = self._name_for_multidisc_folder(multi_games[0].get_cue_sheet().get_game_name())
         new_game_path = join(multi_games[0].get_directory_path(), game_folder)
         self._debug_print(f'\nCreating multi-disc folder: {new_game_path}')
         makedirs(new_game_path, exist_ok=True)
@@ -434,7 +439,7 @@ class PSIOGameManager:
     # ************************************************************************************
     def _process_disc_files(self, multi_games: list[Game], new_game_path: str):
         """Move files for each disc and update game paths."""
-        game_folder = self._remove_disc_from_name(multi_games[0].get_cue_sheet().get_game_name())
+        game_folder = self._name_for_multidisc_folder(multi_games[0].get_cue_sheet().get_game_name())
         for multi_disc in multi_games:
             disc_path = join(multi_disc.get_directory_path(), multi_disc.get_directory_name())
             self._debug_print(f'disc_path: {disc_path}')
@@ -547,12 +552,15 @@ class PSIOGameManager:
 
 
     # ************************************************************************************
-    def _remove_disc_from_name(self, game_name: str) -> str:
-        """Check if "Disc" is in the string and remove it"""
-        if search(r'\bDisc\b', game_name, IGNORECASE):
-            cleaned = sub(r'\s*\(?\bDisc\s*\d+\)?', '', game_name, flags=IGNORECASE).strip()
-            return cleaned
-        return game_name
+    def _name_for_multidisc_folder(self, game_name: str) -> str:
+        """Remove any text within parentheses (complete or incomplete), including the parentheses"""
+        # First, remove complete parenthetical phrases
+        cleaned = sub(r'\s*\([^)]*\)', '', game_name).strip()
+
+        # Then, remove any trailing incomplete parentheses (open paren with no close at end)
+        cleaned = sub(r'\s*\([^)]*$', '', cleaned).strip()
+
+        return cleaned
     # ************************************************************************************
 
 
@@ -714,6 +722,77 @@ class PSIOGameManager:
 
 
     # ************************************************************************************
+    def _rename_game(self, game: Game, new_game_name: str):
+        """Rename game and associated files"""
+
+        # Get the current game name from the CUE file
+        cuesheet = game.get_cue_sheet()
+        game_name = cuesheet.get_game_name()
+
+        # If the game name has not changed
+        if game_name == new_game_name:
+            return
+
+        self._debug_print(f'Renaming game from "{game_name}" to "{new_game_name}"')
+
+        # Get the BIN file (should be a single BIN file at this point)
+        bin_file = cuesheet.get_bin_files()[0]
+
+        # Get the original file paths
+        game_full_path = Path(game.get_directory_path()) / game.get_directory_name()
+        original_cu2_path = game_full_path / f'{game_name}.cu2'
+        original_bmp_path = game_full_path / f'{game_name}.bmp'
+
+        # Create new directory for the game
+        new_game_dir = game_full_path.parent / new_game_name
+        new_game_dir.mkdir(exist_ok=True)
+        if not new_game_dir.exists():
+            print(f"Error creating directory: {new_game_dir}")
+            return
+
+        # Move/rename the bin file
+        if Path(bin_file.get_file_path()).exists():
+            new_bin_path = new_game_dir / f'{new_game_name}.bin'
+            self._move_file(bin_file.get_file_path(), new_bin_path)
+
+            # Update the name and path of the Binfile object
+            bin_file.set_file_name(f'{new_game_name}.bin')
+            bin_file.set_file_path(new_bin_path)
+
+        # Move/rename the cue file
+        if Path(cuesheet.get_file_path()).exists():
+            cue_path = Path(cuesheet.get_file_path())
+
+            # Update the game name in the Cuesheet
+            original_cue_text = cue_path.read_text()
+            new_cue_text = original_cue_text.replace(game_name, new_game_name)
+            cue_path.write_text(new_cue_text)
+            new_cue_path = new_game_dir / f'{new_game_name}.cue'
+            self._move_file(cuesheet.get_file_path(), new_cue_path)
+
+            # Update the name and path of the Cuesheet object
+            cuesheet.set_file_name(f'{new_game_name}.cue')
+            cuesheet.set_file_path(new_cue_path)
+
+        # Move/rename the cu2 file
+        if original_cu2_path.exists():
+            self._move_file(original_cu2_path, new_game_dir / f'{new_game_name}.cu2')
+
+        # Move/rename the bmp file
+        if original_bmp_path.exists():
+            self._move_file(original_bmp_path, new_game_dir / f'{new_game_name}.bmp')
+
+        # Update the Game objects paths
+        game.set_directory_name(new_game_name)
+        cuesheet.set_game_name(new_game_name)
+
+        # Delete the original game directory if the game has moved to a new directory
+        if game_full_path != new_game_dir:
+            rmtree(game_full_path, ignore_errors=True)
+    # ************************************************************************************
+
+
+    # ************************************************************************************
     def _game_name_validator(self, game_name: str) -> str:
         """Validate game name length and characters"""
 
@@ -722,8 +801,8 @@ class PSIOGameManager:
         if not game_name:
             raise ValueError("Game name cannot be empty or whitespace-only")
 
-        # Replace invalid characters with underscore
-        sanitised_name = sub(self.INVALID_FILENAME_CHARS, '_', game_name)
+        # Replace invalid characters in the game name
+        sanitised_name = sub(self.INVALID_FILENAME_CHARS, '', game_name)
 
         # Truncate to maximum length
         sanitised_name = sanitised_name[:self.MAX_GAME_NAME_LENGTH]
@@ -792,25 +871,6 @@ class PSIOGameManager:
 
                 except StopIteration:
                     break
-    # ************************************************************************************
-
-
-    # ************************************************************************************
-    def _get_disc_collection(self, game_id: str) -> Optional[str]:
-        """Parse the unique game id from the BIN file"""
-        print()
-        
-        
-        if not game_id:
-            return ''
-
-        formatted_game_id = game_id.replace('-', '_')
-        query = f'SELECT collection FROM games WHERE game_id = "{formatted_game_id}"'
-        response = self.select(query)
-        return response[0][0] if response else ''
-        
-        
-        
     # ************************************************************************************
 
 
@@ -1145,53 +1205,6 @@ class PSIOGameManager:
 
 
     # ************************************************************************************
-    def _print_game_details(self, game: Game):
-        """Print Game details for debugging"""
-        self._debug_print("\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-        game_path = join(game.get_directory_path(), game.get_directory_name())
-        self._debug_print(f'Game ID: {game.get_id()}')
-        self._debug_print(f'Game Name: {game.get_cue_sheet().get_game_name()}')
-        self._debug_print(f'Game Path: {game_path}')
-        self._debug_print(f'Disc Number: {game.get_disc_number()}')
-        self._debug_print(f'Number of Bin Files: {len(game.get_cue_sheet().get_bin_files())}')
-        if game.get_disc_collection():
-            self._debug_print(f'Disc Collection: {game.get_disc_collection()}')
-        self._debug_print(f'Has Cover ART: {game.get_cover_art_present()}')
-        self._debug_print(f'CU2 Required: {game.get_cu2_required()}')
-        self._debug_print(f'Has CU2: {game.get_cu2_present()}')
-        self._debug_print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n")
-    # ************************************************************************************
-
-
-    # ************************************************************************************
-    def _print_bin_file_details(self, bin_files: list[Binfile]):
-        """Print BIN file details for debugging"""
-        self._debug_print("\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-        self._debug_print("BIN FILES:")
-        for binfile in bin_files:
-            self._debug_print("++++++++++++++++++++++++++++++")
-            self._debug_print(f"File: {binfile.get_file_name()}")
-            self._debug_print(f"Path: {binfile.get_file_path()}")
-            self._debug_print(f"Size: {binfile.get_size()}")
-
-            self._debug_print("\nTRACKS:")
-            for track in binfile.get_tracks():
-                self._debug_print(f"Track {track.get_track_number()}")
-                self._debug_print(f"Type={track.get_track_type()}")
-                self._debug_print(f"Sectors={track.get_sectors()}")
-
-                self._debug_print("\nINDEXES:")
-                for index in track.get_indexes():
-                    self._debug_print(f"Index {index['id']}")
-                    self._debug_print(f"Stamp={index['stamp']}")
-                    self._debug_print(f"Offset={index['file_offset']}")
-
-            self._debug_print("++++++++++++++++++++++++++++++")
-        self._debug_print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n")
-    # ************************************************************************************
-
-
-    # ************************************************************************************
     def _parse_game_list(self):
         """Parse game list and display results"""
 
@@ -1302,6 +1315,53 @@ class PSIOGameManager:
             # Insert the data into the tree-view
             self.treeview_game_list.insert(parent='', index=count, iid=count, text='',
                                         values=(game_id, game_name, disc_number, number_of_bins, crc_32, name_valid, bmp_present, cu2_present, lst_present, libcrypt_patch))
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def _print_game_details(self, game: Game):
+        """Print Game details for debugging"""
+        self._debug_print("\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        game_path = join(game.get_directory_path(), game.get_directory_name())
+        self._debug_print(f'Game ID: {game.get_id()}')
+        self._debug_print(f'Game Name: {game.get_cue_sheet().get_game_name()}')
+        self._debug_print(f'Game Path: {game_path}')
+        self._debug_print(f'Disc Number: {game.get_disc_number()}')
+        self._debug_print(f'Number of Bin Files: {len(game.get_cue_sheet().get_bin_files())}')
+        if game.get_disc_collection():
+            self._debug_print(f'Disc Collection: {game.get_disc_collection()}')
+        self._debug_print(f'Has Cover ART: {game.get_cover_art_present()}')
+        self._debug_print(f'CU2 Required: {game.get_cu2_required()}')
+        self._debug_print(f'Has CU2: {game.get_cu2_present()}')
+        self._debug_print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n")
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def _print_bin_file_details(self, bin_files: list[Binfile]):
+        """Print BIN file details for debugging"""
+        self._debug_print("\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        self._debug_print("BIN FILES:")
+        for binfile in bin_files:
+            self._debug_print("++++++++++++++++++++++++++++++")
+            self._debug_print(f"File: {binfile.get_file_name()}")
+            self._debug_print(f"Path: {binfile.get_file_path()}")
+            self._debug_print(f"Size: {binfile.get_size()}")
+
+            self._debug_print("\nTRACKS:")
+            for track in binfile.get_tracks():
+                self._debug_print(f"Track {track.get_track_number()}")
+                self._debug_print(f"Type={track.get_track_type()}")
+                self._debug_print(f"Sectors={track.get_sectors()}")
+
+                self._debug_print("\nINDEXES:")
+                for index in track.get_indexes():
+                    self._debug_print(f"Index {index['id']}")
+                    self._debug_print(f"Stamp={index['stamp']}")
+                    self._debug_print(f"Offset={index['file_offset']}")
+
+            self._debug_print("++++++++++++++++++++++++++++++")
+        self._debug_print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n")
     # ************************************************************************************
 
 

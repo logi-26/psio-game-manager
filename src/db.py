@@ -193,6 +193,7 @@ class GameDatabase:
         """Get the game collection from the local database"""
         if not game_id:
             return ''
+        
 
         formatted_game_id = game_id.replace('-', '_')
         query = f'SELECT collection FROM games WHERE game_id = "{formatted_game_id}"'
