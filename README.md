@@ -1,5 +1,5 @@
 # PSIO Game Manager
-Prepare PlayStation 1 bin/cue games for use with a PSIO device.<br><br>
+Prepare PlayStation 1 bin/cue games for use with a PSIO device.<br>
 The only PSIO app that does everything for your autonomously.<br>
 
 ![alt text](https://github.com/logi-26/psio-game-manager/blob/v0.2/image.png?raw=true)
