@@ -1,6 +1,6 @@
 # PSIO Game Manager
-GUI application to prepare PlayStation 1 bin/cue games for use with a PSIO device.<br>
-A PSIO app that does everything for your autonomously.<br>
+Prepare PlayStation 1 bin/cue games for use with a PSIO device.<br><br>
+The only PSIO app that does everything for your autonomously.<br>
 
 ![alt text](https://github.com/logi-26/psio-game-manager/blob/v0.2/image.png?raw=true)
 
@@ -9,14 +9,15 @@ Organises and standardises PlayStation 1 games into a format acceptable by the P
 
 - Works on Linux, Mac and Windows.
 - Works in batch mode on all selected games.
-- Performs CRC-32 checks of each data track using data from the PlayStation Redump project.
 - Merges all multi-bin games into single bin files.
 - Generates CU2 files for all games that use CDDA audio.
 - Adds game cover images for games that do not have them.
 - Ensures that game names are not greater than 60 characters and do not contain invalid characters.
 - Generates the MULTIDISC.LST file for all multi-disc games and organises them into a single directory.
 - Detects and patches games that use LibCrypt.
-- OPTIONAL: Rename all games using the game names from the PlayStation Redump project.
+- OPTIONAL:
+- Rename all games using the game names from the PlayStation Redump project.
+- Performs CRC-32 checks of each data track using data from the PlayStation Redump project.
 
 ## Windows Users
 There is a Windows exe file:<br/>
@@ -26,6 +27,7 @@ https://github.com/logi-26/psio-game-manager/releases/tag/V0.3<br/>
   - For best performance, use the application with your games stored on a PC HDD and then transfer to an SD card.
   - The application requires the games cue sheet to identify the game.
   - If a game is a single disc game the disc number will be displayed as zero.
+  - CRC checks make the process a lot slower (turned off by default).
 ##### Multi-disc LST
   - If a game is not part of a collection the LST will be displayed with an asterisk.
   - If a game is part of a collection and an LST file is not present the LST will be displayed with "No".
