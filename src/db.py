@@ -15,7 +15,6 @@ from sqlite3 import connect, Error
 
 class GameDatabase:
     """Manages SQLite3 database operations for game data and assets"""
-    
     def __init__(self, debug_mode: bool = False):
         self.debug_mode = debug_mode
         self._database_path = None
@@ -193,7 +192,6 @@ class GameDatabase:
         """Get the game collection from the local database"""
         if not game_id:
             return ''
-        
 
         formatted_game_id = game_id.replace('-', '_')
         query = f'SELECT collection FROM games WHERE game_id = "{formatted_game_id}"'
