@@ -68,7 +68,6 @@ from cue2cu2 import set_cu2_error_log_path, start_cue2cu2
 
 class PSIOGameManager:
     CURRENT_REVISION = 0.3
-    PROGRESS_STATUS = 'Status:'
     MAX_GAME_NAME_LENGTH = 56
 
     def __init__(self, args=None):
@@ -145,7 +144,7 @@ class PSIOGameManager:
     # ************************************************************************************
     def _set_progress_text(self, message: str):
         """Set the text in the progress label"""
-        self.label_progress.configure(text=f"Status: {message}")
+        self.label_progress.configure(text=message)
     # ************************************************************************************
 
 
@@ -156,7 +155,7 @@ class PSIOGameManager:
         self._debug_print('\nPROCESSING GAMES...')
 
         # Loop through all of the Game objects in the game list
-        for game in self.game_list:
+        for game_index, game in enumerate(self.game_list):
 
             # Display the game name in the progress label
             game_name = game.get_cue_sheet().get_game_name()
@@ -193,7 +192,8 @@ class PSIOGameManager:
             self._update_progress_bar(95)
 
             # Update the game list in the GUI after each game has been processed
-            self._display_game_list()
+            #self._display_game_list()
+            self._update_game_row(game_index)
 
             self._debug_print('***********************************************************\n')
 
@@ -264,7 +264,8 @@ class PSIOGameManager:
         """Create a Game object from a CUE sheet."""
         cue_sheet_path = join(game_directory_path, cue_sheet)
 
-        self._set_progress_text(f"Parsing Game: {str(Path(game_directory_path))}")
+        #self._set_progress_text(f"Parsing Game: {str(Path(game_directory_path))}")
+        self._set_progress_text(f"Parsing Game: {str(Path(game_directory_path).stem)}")
 
         # Check for cover art
         cover_art_path = join(game_directory_path, cue_sheet[:-3])
@@ -443,6 +444,54 @@ class PSIOGameManager:
 
 
     # ************************************************************************************
+    def _update_game_row(self, game_index):
+        """Update a single row in the Treeview for the game at the given index"""
+        if not 0 <= game_index < len(self.game_list):
+            self._debug_print(f"Invalid game index: {game_index}")
+            return
+
+        # Get the game object
+        game = self.game_list[game_index]
+        bools = ('No', 'Yes')
+
+        # Compute the updated values for the row (same logic as _display_game_list)
+        game_id = game.get_id()
+        game_name = game.get_cue_sheet().get_game_name()
+        disc_number = game.get_disc_number()
+        number_of_bins = len(game.get_cue_sheet().get_bin_files())
+        name_valid = bools[len(game_name) <= self.MAX_GAME_NAME_LENGTH and '.' not in game_name]
+        cu2_present = bools[game.get_cu2_present()] if game.get_cu2_required() else "*"
+
+        # Check if the game is a multi-disc game and if an LST file is available
+        lst_present = "*"
+        if game.get_disc_number() > 0:
+            lst_present = "Yes" if game.get_multi_disc_file_present() else "No"
+
+        # Check if the cover art is available
+        bmp_present = bools[game.get_cover_art_present()]
+
+        # Check if the game uses LibCrypt encryption and if a patch has already been applied
+        libcrypt_patch = "*"
+        if game.get_libcrypt_required():
+            libcrypt_patch = "Yes" if game.get_libcrypt_applied() else "No"
+
+        # Check if the CRC-32 matches the data from the PlayStation Redump project
+        crc_32 = "*" if not self.crc_check.get() else "Yes" if game.get_crc_valid() else "No"
+
+        # Update the existing row in the Treeview
+        try:
+            self.treeview_game_list.item(game_index, values=(game_id, game_name, disc_number, number_of_bins, crc_32, name_valid, bmp_present, cu2_present, lst_present, libcrypt_patch))
+
+            # Scroll to the updated item
+            self.treeview_game_list.see(game_index)
+            # Highlight the updated row
+            self.treeview_game_list.selection_set(game_index)
+        except TclError as e:
+            self._debug_print(f"Error updating Treeview row {game_index}: {e}")
+    # ************************************************************************************
+
+
+    # ************************************************************************************
     def _display_game_list(self):
         """Display game list in treeview"""
 
@@ -457,7 +506,7 @@ class PSIOGameManager:
             game_name = game.get_cue_sheet().get_game_name()
             disc_number = game.get_disc_number()
             number_of_bins = len(game.get_cue_sheet().get_bin_files())
-            name_valid = bools[len(game.get_cue_sheet().get_game_name()) <= self.MAX_GAME_NAME_LENGTH and '.' not in game.get_cue_sheet().get_game_name()]
+            name_valid = bools[len(game_name) <= self.MAX_GAME_NAME_LENGTH and '.' not in game_name]
             cu2_present = bools[game.get_cu2_present()] if game.get_cu2_required() else "*"
 
             # Check if the games is a multi-disc game and if an LST file is available
@@ -486,6 +535,9 @@ class PSIOGameManager:
             # Autoscroll to the last item if the list is not empty
             if self.game_list:
                 self.treeview_game_list.yview_moveto(1)
+
+                # Highlight the updated row
+                self.treeview_game_list.selection_set(count)
     # ************************************************************************************
 
 

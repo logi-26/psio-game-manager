@@ -35,6 +35,14 @@ class Utils:
 
 
     # ************************************************************************************
+    def _debug_print(self, message: str):
+        """Print debug messages if debug mode is enabled"""
+        if self.debug_mode:
+            print(message)
+    # ************************************************************************************
+
+
+    # ************************************************************************************
     def _get_redump_tracks(self, game: Game) -> list:
         """Get the Redump track data from the local database"""
 
@@ -65,18 +73,18 @@ class Utils:
                     try:
                         time = pregap.split(':')
                         if len(time) != 3:
-                            print(f"Invalid pregap format for track {track_number}: {pregap}. Expected MM:SS:FF.")
+                            print(f"Warning: Invalid pregap format for track {track_number}: {pregap}. Expected MM:SS:FF.")
                             continue  # Skip this row
                         minutes = int(time[0])
                         seconds = int(time[1])
                         frames = int(time[2])
                         # Validate ranges (seconds < 60, frames < 75 for CD timing)
                         if not (0 <= seconds < 60 and 0 <= frames < 75):
-                            print(f"Invalid pregap values for track {track_number}: {pregap}. Seconds must be < 60, frames < 75.")
+                            print(f"Warning: Invalid pregap values for track {track_number}: {pregap}. Seconds must be < 60, frames < 75.")
                             continue
                         pregap_sectors = minutes * 60 * 75 + seconds * 75 + frames
                     except ValueError as e:
-                        print(f"Error converting pregap '{pregap}' for track {track_number}: {e}")
+                        print(f"Error: Converting pregap '{pregap}' for track {track_number}: {e}")
                         continue  # Skip this row
 
                 # Handle crc safely
@@ -465,6 +473,7 @@ class Utils:
     def collect_multi_games(self, game: Game, game_list: list):
         """Collect all games in the disc collection."""
         disc_collection = game.get_disc_collection()
+
         if disc_collection is None:
             return []
         return [
@@ -501,18 +510,24 @@ class Utils:
     def process_disc_files(self, multi_games: list[Game], new_game_path: str):
         """Move files for each disc and update game paths."""
         game_folder = self.name_for_multidisc_folder(multi_games[0].get_cue_sheet().get_game_name())
+
         for multi_disc in multi_games:
-            disc_path = join(multi_disc.get_directory_path(), multi_disc.get_directory_name())
+            if multi_disc:
 
-            for filename in listdir(disc_path):
-                source_path = join(disc_path, filename)
-                target_path = join(new_game_path, filename)
-                file_no_ext = splitext(filename)[0]
+                # Get the path for the disc
+                disc_path = join(multi_disc.get_directory_path(), multi_disc.get_directory_name())
 
-                self.move_file(source_path, target_path)
-                self.update_game_paths(multi_disc, new_game_path, game_folder, file_no_ext)
+                if exists(disc_path):
+                    for filename in listdir(disc_path):
+                        source_path = join(disc_path, filename)
+                        target_path = join(new_game_path, filename)
+                        file_no_ext = splitext(filename)[0]
 
-            rmtree(disc_path)
+                        # Move the files and update the Game paths
+                        self.move_file(source_path, target_path)
+                        self.update_game_paths(multi_disc, new_game_path, game_folder, file_no_ext)
+
+                    rmtree(disc_path)
     # ************************************************************************************
 
 
@@ -529,20 +544,21 @@ class Utils:
 
                 # Loop through the other discs in the collection and duplicate disc 1 cover art
                 for multi_disc in multi_games:
-                    if multi_disc.get_disc_number() > 1 and not multi_disc.get_cover_art_present():
+                    if multi_disc:
+                        if multi_disc.get_disc_number() > 1 and not multi_disc.get_cover_art_present():
 
-                        game_dir_path = multi_disc.get_directory_path()
-                        game_dir_name = multi_disc.get_directory_name()
-                        game_name = multi_disc.get_cue_sheet().get_game_name()
+                            game_dir_path = multi_disc.get_directory_path()
+                            game_dir_name = multi_disc.get_directory_name()
+                            game_name = multi_disc.get_cue_sheet().get_game_name()
 
-                        disc_path = join(game_dir_path, game_dir_name)
-                        disc_bmp_path = join(disc_path, f"{game_name}.bmp")
+                            disc_path = join(game_dir_path, game_dir_name)
+                            disc_bmp_path = join(disc_path, f"{game_name}.bmp")
 
-                        copyfile(disc_1_bmp_path, disc_bmp_path)
+                            copyfile(disc_1_bmp_path, disc_bmp_path)
 
-                        # Update the Game object to indicate that it now has a cover art file
-                        if exists(disc_bmp_path):
-                            multi_disc.set_cover_art_present(True)
+                            # Update the Game object to indicate that it now has a cover art file
+                            if exists(disc_bmp_path):
+                                multi_disc.set_cover_art_present(True)
     # ************************************************************************************
 
 
@@ -553,10 +569,12 @@ class Utils:
         try:
             with open(join(game_path, "MULTIDISC.LST"), 'w', encoding="utf-8") as file:
                 for multi_disc in multi_games:
-                    file.write(f"{multi_disc.get_cue_sheet().get_game_name()}.bin" + '\n')
 
-                    # Update the Game object to show that it now has an associated LST file
-                    multi_disc.set_multi_disc_file_present(True)
+                    if multi_disc:
+                        file.write(f"{multi_disc.get_cue_sheet().get_game_name()}.bin" + '\n')
+
+                        # Update the Game object to show that it now has an associated LST file
+                        multi_disc.set_multi_disc_file_present(True)
 
         except OSError as error:
             print(f"Error creating multi-disc file: {error}")
@@ -608,7 +626,7 @@ class Utils:
             try:
                 makedirs(temp_game_dir, exist_ok=True)
             except OSError as error:
-                print(f"(ERROR) Creating temp game directory: {error}")
+                print(f"ERROR: Creating temp game directory: {error}")
                 return
 
         # Merge the BIN files
