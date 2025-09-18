@@ -36,19 +36,28 @@ class BinMerger:
     def _create_merged_cuesheet(self, game_name: str, bin_files: list) -> str:
         """Creates a merged CUE file containing the multiple tracks"""
         cue_sheet = f'FILE "{game_name}.bin" BINARY\n'
-
-        # One sector is (BLOCKSIZE) bytes
         sector_pos = 0
         for bin_file in bin_files:
             for track in bin_file.get_tracks():
-                cue_sheet += f'   TRACK {track.get_track_number()} {track.get_track_type()}\n'
+                track_number = self._pad_zero(track.get_track_number())
+                cue_sheet += f'   TRACK {track_number} {track.get_track_type()}\n'
 
                 for index in track.get_indexes():
-                    sectors_to_cue_stamp = self._sectors_to_cue_stamp(sector_pos + index["file_offset"])
-                    cue_sheet += f'   INDEX {index["id"]} {sectors_to_cue_stamp}\n'
+                    index_offset = index["file_offset"]
+                    sectors_to_cue_stamp = self._sectors_to_cue_stamp(sector_pos + index_offset)
+                    index_id = self._pad_zero(index["id"])
+                    cue_sheet += f'     INDEX {index_id} {sectors_to_cue_stamp}\n'
+
                 sector_pos += bin_file.get_size() / track.get_block_size()
 
         return cue_sheet
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def _pad_zero(self, num: int) -> str:
+        """Pad numbers below 10 with a zero"""
+        return f"{num:02d}"
     # ************************************************************************************
 
 
@@ -60,27 +69,28 @@ class BinMerger:
             self._debug_print(f"(Error) Target merged file already exists: {merged_bin_path}")
             return False
 
-        chunk_size = 1024 * 1024
-
         # Track the offset for each BIN file
-        current_offset = 0
+        offset = 0
 
         with open(merged_bin_path, 'wb') as outfile:
             # Loop through the BIN files
             for bin_file in bin_files:
-                self._debug_print(f"Merging BIN file: {bin_file.get_file_name()} at offset 0x{current_offset:X}")
-                file_size = 0  # Track size of current file
+                bin_file_name = bin_file.get_file_name()
+                self._debug_print(f"Merging BIN file: {bin_file_name} at offset 0x{offset:X}")
+
+                # Track size of current file
+                file_size = 0
 
                 with open(bin_file.get_file_path(), 'rb') as in_file:
                     while True:
-                        chunk = in_file.read(chunk_size)
+                        chunk = in_file.read(1024 * 1024)
                         if not chunk:
                             break
                         outfile.write(chunk)
                         file_size += len(chunk)
 
                 # Update offset after writing file
-                current_offset += file_size
+                offset += file_size
 
         return True
     # ************************************************************************************
