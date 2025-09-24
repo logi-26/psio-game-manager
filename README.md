@@ -262,11 +262,6 @@ https://github.com/logi-26/psio-game-manager/releases/tag/V0.3<br/>
   - SCES_019.09 - Wip3out (Europe)
 </details>
 
-
-## Info
-This application uses the cue2cu2 Python script, which have been custom modified for psio-game-manager:<br/>
-https://github.com/NRGDEAD/Cue2cu2<br/>
-
 ## Dependencies
 This project requires Python 3 and the following Python packages:
 - `ttkbootstrap`
