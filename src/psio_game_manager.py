@@ -56,14 +56,14 @@ from ttkbootstrap.dialogs import MessageDialog
 from ttkbootstrap.constants import DISABLED
 from pathlib2 import Path
 
-# Local imports
-from utils import Utils
+# Local classes
 from game_files import Game, Cuesheet, Binfile
+from utils import Utils
 from db import GameDatabase
-from crc_32 import CrcFileVerifier
 from binmerge import BinMerger
+from cu2 import Cu2Generator
 from ppf_patcher import PPFProcessor
-from cue2cu2 import set_cu2_error_log_path, start_cue2cu2
+from crc_32 import CrcFileVerifier
 
 
 class PSIOGameManager:
@@ -87,6 +87,7 @@ class PSIOGameManager:
         self.crc_verifier = CrcFileVerifier(debug_mode=self.debug_mode)
         self.bin_merger = BinMerger(debug_mode=self.debug_mode)
         self.ppf_patcher = PPFProcessor(debug_mode=self.debug_mode)
+        self.cu2_generator = Cu2Generator(debug_mode=self.debug_mode)
 
         # Set the database paths
         self.database_name = "psio_assist.db"
@@ -97,9 +98,6 @@ class PSIOGameManager:
 
         # Set the icon path
         self.icon_path = self._resource_path("icon.ico")
-
-        # Set the error log paths for the CUE2CU2 process
-        set_cu2_error_log_path(self.error_log_file)
 
         # Initialise variables
         self.args = args
@@ -192,7 +190,6 @@ class PSIOGameManager:
             self._update_progress_bar(95)
 
             # Update the game list in the GUI after each game has been processed
-            #self._display_game_list()
             self._update_game_row(game_index)
 
             self._debug_print('***********************************************************\n')
@@ -245,7 +242,7 @@ class PSIOGameManager:
             self._set_progress_text(f"Generating cu2 file - {game_name}")
 
             # Generate the CU2 file
-            cu2_generated = start_cue2cu2(cue_full_path, f'{game_name}.bin')
+            cu2_generated = self.cu2_generator.generate_cu2(cue_full_path, f'{game_name}.bin')
 
             if cu2_generated:
                 game.set_cu2_present(True)
