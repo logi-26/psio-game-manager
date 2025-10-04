@@ -4,6 +4,7 @@ Generates a CU2 file from a PlayStation CUE file
 
 from os.path import exists, join, getsize
 from pathlib import Path
+from typing import Optional
 from re import compile
 
 
@@ -25,7 +26,7 @@ class Cu2Generator:
 
 
     # ************************************************************************************
-    def _timecode_to_sectors(self, time_code):
+    def _timecode_to_sectors(self, time_code: str) -> int:
         """Convert time code to sectors"""
         minutes = int(time_code[0:2])
         seconds = int(time_code[3:5])
@@ -37,7 +38,7 @@ class Cu2Generator:
 
 
     # ************************************************************************************
-    def _sectors_to_timecode(self, sectors):
+    def _sectors_to_timecode(self, sectors: int) -> str:
         """Convert sectors to time code"""
         total_seconds = sectors // 75
         modulo_sectors = sectors % 75
@@ -48,7 +49,7 @@ class Cu2Generator:
 
 
     # ************************************************************************************
-    def _sectors_to_timecode_alternative(self, sectors):
+    def _sectors_to_timecode_alternative(self, sectors: int) -> str:
         """Convert sectors to time code, using MM:SS-1:75 instead of MM:SS:00"""
         total_seconds = sectors // 75
         modulo_sectors = sectors % 75
@@ -65,7 +66,7 @@ class Cu2Generator:
 
 
     # ************************************************************************************
-    def _bytes_to_sectors(self, file_size):
+    def _bytes_to_sectors(self, file_size: int):
         """Get the total runtime/size of a binary file in sectors, given the file size in bytes"""
         if file_size % 2352 == 0:
             return file_size // 2352
@@ -74,7 +75,7 @@ class Cu2Generator:
 
 
     # ************************************************************************************
-    def _convert_filesize_to_sectors(self, binary_file):
+    def _convert_filesize_to_sectors(self, binary_file: str):
         """Get the total runtime/size of a binary file in sectors"""
         if exists(binary_file):
             return self._bytes_to_sectors(getsize(binary_file))
@@ -84,7 +85,7 @@ class Cu2Generator:
 
 
     # ************************************************************************************
-    def _timecode_addition(self, time_code, offset):
+    def _timecode_addition(self, time_code: str, offset: str) -> str:
         """Add two timecodes together, capping at 449999 sectors"""
         time_code = self._timecode_to_sectors(time_code)
         offset = self._timecode_to_sectors(offset)
@@ -94,7 +95,7 @@ class Cu2Generator:
 
 
     # ************************************************************************************
-    def _get_cue_content(self, cue_path: str):
+    def _get_cue_content(self, cue_path: str) -> Optional[list]:
         """Read and return the content of a CUE file"""
         try:
             with open(cue_path, 'r', encoding='utf-8') as cue_file:
@@ -106,7 +107,7 @@ class Cu2Generator:
 
 
     # ************************************************************************************
-    def _is_cue_mode_valid(self, cue_path: str, cue_content: list):
+    def _is_cue_mode_valid(self, cue_path: str, cue_content: list) -> bool:
         """Check if the CUE file uses MODE2/2352"""
         for line in cue_content:
             if compile('.*[Mm][Oo][Dd][Ee]2/2352.*').match(line):
