@@ -128,14 +128,14 @@ class GameDatabase:
 
 
     # ************************************************************************************
-    def select(self, select_query: str):
+    def select(self, select_query: str, params: tuple = ()):
         """Select data from the local database"""
         rows = []
         conn = self._create_connection()
         try:
             if conn:
                 cursor = conn.cursor()
-                cursor.execute(select_query)
+                cursor.execute(select_query, params)
                 rows = cursor.fetchall()
                 cursor.close()
         except Error:
@@ -155,7 +155,7 @@ class GameDatabase:
             if conn:
                 cursor = conn.cursor()
                 with open(image_out_path, 'wb') as output_file:
-                    cursor.execute(f'SELECT psio FROM covers WHERE id = {row_id};')
+                    cursor.execute('SELECT psio FROM covers WHERE id = ?', (row_id,))
                     image_blob = cursor.fetchone()
                     output_file.write(image_blob[0])
                 cursor.close()
@@ -175,7 +175,7 @@ class GameDatabase:
             if conn:
                 cursor = conn.cursor()
                 with open(ppf_out_path, 'wb') as output_file:
-                    cursor.execute(f'SELECT psio FROM libcrypt_patches WHERE id = {row_id};')
+                    cursor.execute('SELECT psio FROM libcrypt_patches WHERE id = ?', (row_id,))
                     patch_blob = cursor.fetchone()
                     output_file.write(patch_blob[0])
                 cursor.close()
@@ -193,11 +193,10 @@ class GameDatabase:
         if not game_id:
             return {}
         formatted_game_id = game_id.replace('-', '_')
-        query = (
-            f'SELECT disc_number, collection, libcrypt FROM games '
-            f'WHERE game_id = "{formatted_game_id}"'
+        response = self.select(
+            'SELECT disc_number, collection, libcrypt FROM games WHERE game_id = ?',
+            (formatted_game_id,)
         )
-        response = self.select(query)
         if response:
             row = response[0]
             return {
@@ -213,8 +212,10 @@ class GameDatabase:
             return ''
 
         formatted_game_id = game_id.replace('-', '_')
-        query = f'SELECT collection FROM games WHERE game_id = "{formatted_game_id}"'
-        response = self.select(query)
+        response = self.select(
+            'SELECT collection FROM games WHERE game_id = ?',
+            (formatted_game_id,)
+        )
         return response[0][0] if response else ''
     # ************************************************************************************
 
@@ -226,8 +227,10 @@ class GameDatabase:
             return ''
 
         formatted_game_id = game_id.replace('-', '_')
-        query = f'SELECT name FROM games WHERE game_id = "{formatted_game_id}"'
-        response = self.select(query)
+        response = self.select(
+            'SELECT name FROM games WHERE game_id = ?',
+            (formatted_game_id,)
+        )
         return response[0][0] if response else ''
     # ************************************************************************************
 
@@ -239,13 +242,13 @@ class GameDatabase:
             return
 
         formatted_game_id = game_id.replace('-', '_')
-        query = (
-            f'SELECT track_number, pregap, sectors, size, crc '
-            f'FROM tracks '
-            f'WHERE game_id = "{formatted_game_id}" '
-            f'ORDER BY track_number'
+        return self.select(
+            'SELECT track_number, pregap, sectors, size, crc '
+            'FROM tracks '
+            'WHERE game_id = ? '
+            'ORDER BY track_number',
+            (formatted_game_id,)
         )
-        return self.select(query)
     # ************************************************************************************
 
 
@@ -256,8 +259,10 @@ class GameDatabase:
             return
 
         formatted_game_id = game_id.replace('-', '_')
-        query = f'SELECT disc_number FROM games WHERE game_id = "{formatted_game_id}"'
-        response = self.select(query)
+        response = self.select(
+            'SELECT disc_number FROM games WHERE game_id = ?',
+            (formatted_game_id,)
+        )
         return response[0][0] if response else 0
     # ************************************************************************************
 
@@ -269,8 +274,10 @@ class GameDatabase:
             return
 
         formatted_game_id = game_id.replace('-', '_')
-        query = f'SELECT libcrypt FROM games WHERE game_id = "{formatted_game_id}"'
-        response = self.select(query)
+        response = self.select(
+            'SELECT libcrypt FROM games WHERE game_id = ?',
+            (formatted_game_id,)
+        )
         return response[0][0] if response else 0
     # ************************************************************************************
 
@@ -282,8 +289,10 @@ class GameDatabase:
             return False
 
         formatted_game_id = game_id.replace('-', '_')
-        query = f'SELECT id FROM libcrypt_patches WHERE game_id = "{formatted_game_id}"'
-        response = self.select(query)
+        response = self.select(
+            'SELECT id FROM libcrypt_patches WHERE game_id = ?',
+            (formatted_game_id,)
+        )
         return bool(response)
     # ************************************************************************************
 
@@ -298,7 +307,7 @@ class GameDatabase:
         try:
             if conn:
                 cursor = conn.cursor()
-                cursor.execute(f'SELECT psio FROM covers WHERE game_id = "{formatted_game_id}"')
+                cursor.execute('SELECT psio FROM covers WHERE game_id = ?', (formatted_game_id,))
                 row = cursor.fetchone()
                 if row:
                     with open(join(output_path, f'{game_name}.bmp'), 'wb') as f:
@@ -323,7 +332,7 @@ class GameDatabase:
         try:
             if conn:
                 cursor = conn.cursor()
-                cursor.execute(f'SELECT psio FROM libcrypt_patches WHERE game_id = "{formatted_game_id}"')
+                cursor.execute('SELECT psio FROM libcrypt_patches WHERE game_id = ?', (formatted_game_id,))
                 row = cursor.fetchone()
                 if row:
                     with open(join(output_path, f'{game_id}.ppf'), 'wb') as f:
