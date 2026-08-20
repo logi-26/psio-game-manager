@@ -188,6 +188,25 @@ class GameDatabase:
 
 
     # ************************************************************************************
+    def get_game_data(self, game_id: str) -> dict:
+        """Get disc_number, collection and libcrypt status in a single query"""
+        if not game_id:
+            return {}
+        formatted_game_id = game_id.replace('-', '_')
+        query = (
+            f'SELECT disc_number, collection, libcrypt FROM games '
+            f'WHERE game_id = "{formatted_game_id}"'
+        )
+        response = self.select(query)
+        if response:
+            row = response[0]
+            return {
+                'disc_number': row[0] or 0,
+                'collection': row[1] or '',
+                'libcrypt': bool(row[2])
+            }
+        return {}
+
     def get_database_disc_collection(self, game_id: str) -> str:
         """Get the game collection from the local database"""
         if not game_id:
@@ -270,34 +289,50 @@ class GameDatabase:
 
 
     # ************************************************************************************
-    def copy_game_cover(self, output_path: str, game_id: str, game_name: str):
-        """Copy game front cover art if available in local database"""
+    def copy_game_cover(self, output_path: str, game_id: str, game_name: str) -> bool:
+        """Copy game front cover art from the database. Returns True if copied."""
         if not game_id:
-            return
-
+            return False
         formatted_game_id = game_id.replace('-', '_')
-        query = f'SELECT id FROM covers WHERE game_id = "{formatted_game_id}"'
-        response = self.select(query)
-
-        if response:
-            row_id = response[0][0]
-            image_out_path = join(output_path, f'{game_name}.bmp')
-            self._extract_game_cover_blob(row_id, image_out_path)
+        conn = self._create_connection()
+        try:
+            if conn:
+                cursor = conn.cursor()
+                cursor.execute(f'SELECT psio FROM covers WHERE game_id = "{formatted_game_id}"')
+                row = cursor.fetchone()
+                if row:
+                    with open(join(output_path, f'{game_name}.bmp'), 'wb') as f:
+                        f.write(row[0])
+                    return True
+        except Error:
+            pass
+        finally:
+            if conn:
+                conn.close()
+        return False
     # ************************************************************************************
 
 
     # ************************************************************************************
-    def copy_libcrypt_patch(self, output_path: str, game_id: str):
-        """Copy LibCrypt PPF patch file if available in local database"""
+    def copy_libcrypt_patch(self, output_path: str, game_id: str) -> bool:
+        """Copy LibCrypt PPF patch from the database. Returns True if copied."""
         if not game_id:
-            return
-
+            return False
         formatted_game_id = game_id.replace('-', '_')
-        query = f'SELECT id FROM libcrypt_patches WHERE game_id = "{formatted_game_id}"'
-        response = self.select(query)
-
-        if response:
-            row_id = response[0][0]
-            ppf_out_path = join(output_path, f'{game_id}.ppf')
-            self._extract_game_libcrypt_patch_blob(row_id, ppf_out_path)
+        conn = self._create_connection()
+        try:
+            if conn:
+                cursor = conn.cursor()
+                cursor.execute(f'SELECT psio FROM libcrypt_patches WHERE game_id = "{formatted_game_id}"')
+                row = cursor.fetchone()
+                if row:
+                    with open(join(output_path, f'{game_id}.ppf'), 'wb') as f:
+                        f.write(row[0])
+                    return True
+        except Error:
+            pass
+        finally:
+            if conn:
+                conn.close()
+        return False
     # ************************************************************************************

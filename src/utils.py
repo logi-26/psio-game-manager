@@ -180,12 +180,8 @@ class Utils:
         if not game.get_libcrypt_required():
             return
 
-        # If there is a PPF patch available in the local database for this game
-        if self.db.libcrypt_patch_available(game.get_id()):
-
-            # Get the LibCrypt PPF patch from the database and copy it to the local directory
-            game_full_path = join(game.get_directory_path(), game.get_directory_name())
-            self.db.copy_libcrypt_patch(game_full_path, game.get_id())
+        game_full_path = join(game.get_directory_path(), game.get_directory_name())
+        if self.db.copy_libcrypt_patch(game_full_path, game.get_id()):
 
             game_path = join(game.get_directory_path(), game.get_directory_name())
             bin_path = game.get_cue_sheet().get_bin_files()[0].get_file_path()
@@ -324,18 +320,10 @@ class Utils:
     # ************************************************************************************
     def add_game_cover_art(self, game: Game):
         """Add the game cover art"""
-        game_id = game.get_id()
-        game_name = game.get_cue_sheet().get_game_name()
-
         if game.get_cover_art_present():
             return
-
-        # Get the game cover art from the database and copy it to the local directory
         game_full_path = join(game.get_directory_path(), game.get_directory_name())
-        self.db.copy_game_cover(game_full_path, game_id, game_name)
-
-        # If the game cover has been copied, update the game object cover details
-        if exists(join(game_full_path, f'{game_name}.bmp')):
+        if self.db.copy_game_cover(game_full_path, game.get_id(), game.get_cue_sheet().get_game_name()):
             game.set_cover_art_present(True)
     # ************************************************************************************
 
@@ -436,11 +424,8 @@ class Utils:
         if not game.get_libcrypt_required() or game.get_libcrypt_applied():
             return
 
-        if self.db.libcrypt_patch_available(game.get_id()):
-
-            # Get the LibCrypt PPF patch from the database and copy it to the local directory
-            game_full_path = join(game.get_directory_path(), game.get_directory_name())
-            self.db.copy_libcrypt_patch(game_full_path, game.get_id())
+        game_full_path = join(game.get_directory_path(), game.get_directory_name())
+        if self.db.copy_libcrypt_patch(game_full_path, game.get_id()):
 
             game_path = join(game.get_directory_path(), game.get_directory_name())
             bin_path = game.get_cue_sheet().get_bin_files()[0].get_file_path()
@@ -521,11 +506,11 @@ class Utils:
                     for filename in listdir(disc_path):
                         source_path = join(disc_path, filename)
                         target_path = join(new_game_path, filename)
-                        file_no_ext = splitext(filename)[0]
-
-                        # Move the files and update the Game paths
                         self.move_file(source_path, target_path)
-                        self.update_game_paths(multi_disc, new_game_path, game_folder, file_no_ext)
+
+                    # Update Game paths once per disc using the cue sheet name
+                    file_no_ext = splitext(multi_disc.get_cue_sheet().get_file_name())[0]
+                    self.update_game_paths(multi_disc, new_game_path, game_folder, file_no_ext)
 
                     rmtree(disc_path)
     # ************************************************************************************
@@ -583,10 +568,13 @@ class Utils:
 
     # ************************************************************************************
     def generate_multidisc_files(self, game_list: list):
-        """Generate MULTIDISC.LST file for all multi-disc game"""
+        """Generate MULTIDISC.LST file for all multi-disc games"""
         multi_disc_games = [game for game in game_list if game.get_disc_number() > 0]
         if not multi_disc_games:
             return
+
+        # Build lookup once instead of rebuilding it for every disc in every collection
+        game_lookup = {game.get_id(): game for game in game_list}
 
         for game in game_list:
 
@@ -594,7 +582,11 @@ class Utils:
             if not self.is_first_disc_without_multidisc(game):
                 continue
 
-            multi_games = self.collect_multi_games(game, game_list)
+            disc_collection = game.get_disc_collection()
+            if not disc_collection:
+                continue
+
+            multi_games = [game_lookup.get(gid.replace('_', '-')) for gid in disc_collection]
             if len(multi_games) <= 1:
                 continue
 
@@ -660,38 +652,23 @@ class Utils:
     # ************************************************************************************
     def parse_game_id(self, bin_file_path: str) -> Optional[str]:
         """Parse the unique game ID from BIN file"""
-        line = ''
-        lines_checked = 0
-
         if not exists(bin_file_path):
-            return
+            return None
 
-        # Open the BIN file for the game
         with open(bin_file_path, 'rb') as bin_file:
+            # PS1 SYSTEM.CNF is at LBA ~22; 50 sectors (117 KB) is more than enough
+            data = bin_file.read(50 * 2352)
 
-            # The game-id is always located in the first 50-100 bytes of the BIN file
-            while line is not None and lines_checked < self.MAX_LINES_TO_CHECK:
-                try:
-                    line = str(next(bin_file))
+        # Decode as ASCII, dropping non-ASCII bytes, so region codes are searchable cleanly
+        text = data.decode('ascii', errors='ignore')
 
-                    if line is None:
-                        continue
+        for region_code in self.REGION_CODES:
+            if region_code in text:
+                start = text.find(region_code)
+                game_id = text[start:start + 11].replace('.', '').strip()
+                return game_id.replace('_', '-').replace('.', '').strip()
 
-                    lines_checked += 1
-                    for region_code in self.REGION_CODES:
-
-                        # Check if the line of bytes contains any known region-code
-                        if region_code in line:
-
-                            # Use the region-code offset in the BIN file to parse the game-id
-                            start = line.find(region_code)
-                            game_id = line[start:start + 11].replace('.', '').strip()
-
-                            # Return the game_id
-                            return game_id.replace('_', '-').replace('.', '').strip()
-
-                except StopIteration:
-                    break
+        return None
     # ************************************************************************************
 
 

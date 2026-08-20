@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -46,11 +46,12 @@ Copyright (C) 2021 LoGi26
 
 # System imports
 import sys
+import threading
 from os.path import exists, join, dirname, abspath
 from json import load, dumps
 from argparse import ArgumentParser
 from ast import literal_eval
-from tkinter import Menu, filedialog, StringVar, BooleanVar, TclError, PhotoImage
+from tkinter import Menu, Toplevel, filedialog, StringVar, BooleanVar, TclError, PhotoImage
 from ttkbootstrap import Window, Floodgauge, Treeview, Style, Scrollbar, Labelframe, Label, Button, NO, CENTER, VERTICAL
 from ttkbootstrap.dialogs import MessageDialog
 from ttkbootstrap.constants import DISABLED
@@ -67,7 +68,7 @@ from crc_32 import CrcFileVerifier
 
 
 class PSIOGameManager:
-    CURRENT_REVISION = 0.3
+    CURRENT_REVISION = 1.0
     MAX_GAME_NAME_LENGTH = 56
 
     def __init__(self, args=None):
@@ -111,6 +112,7 @@ class PSIOGameManager:
         self.label_progress = None
         self.progress_bar = None
         self.button_start = None
+        self.button_browse = None
         self.treeview_game_list = None
         self.label_src = None
         self.cover_art_frame = None
@@ -142,7 +144,7 @@ class PSIOGameManager:
     # ************************************************************************************
     def _set_progress_text(self, message: str):
         """Set the text in the progress label"""
-        self.label_progress.configure(text=message)
+        self.window.after(0, lambda: self.label_progress.configure(text=message))
     # ************************************************************************************
 
 
@@ -189,8 +191,8 @@ class PSIOGameManager:
             self.utils.apply_libcrypt_patch(game)
             self._update_progress_bar(95)
 
-            # Update the game list in the GUI after each game has been processed
-            self._update_game_row(game_index)
+            # Schedule the row update on the main thread
+            self.window.after(0, lambda idx=game_index: self._update_game_row(idx))
 
             self._debug_print('***********************************************************\n')
 
@@ -203,8 +205,8 @@ class PSIOGameManager:
         self._update_progress_bar(100)
         self._set_progress_text("")
 
-        # Update the game list in the GUI
-        self._display_game_list()
+        # Rebuild the full game list on the main thread once all processing is done
+        self.window.after(0, self._display_game_list)
 
         self._debug_print('Processing finished!\n')
     # ************************************************************************************
@@ -283,17 +285,17 @@ class PSIOGameManager:
         game_id = self.utils.parse_game_id(bin_files[0].get_file_path()) if bin_files else None
         self._update_progress_bar(50)
 
-        disc_number = self.db.get_database_disc_number(game_id) if game_id else 0
         game_name = Path(bin_files[0].get_file_name()).stem
-        disc_collection = self.db.get_database_disc_collection(game_id) if game_id else []
+        game_data = self.db.get_game_data(game_id) if game_id else {}
+        disc_number = game_data.get('disc_number', 0)
+        disc_collection = game_data.get('collection', [])
+        libcrypt_required = game_data.get('libcrypt', False)
         self._update_progress_bar(60)
 
-        # Convert the disc collection into a list
+        # Convert the disc collection string into a list
         if disc_collection:
             disc_collection = literal_eval(disc_collection)
 
-        # Get libcrypt status
-        libcrypt_required = self.db.get_libcrypt_status(game_id) if game_id else False
         self._update_progress_bar(70)
 
         # Create Cuesheet object
@@ -342,8 +344,8 @@ class PSIOGameManager:
                 self.game_list.append(game)
                 self._print_game_details(game)
 
-                # Update the displayed game list after each game is processed
-                self._display_game_list()
+                # Append just this row rather than rebuilding the entire list
+                self._append_game_row(game)
     # ************************************************************************************
 
 
@@ -425,18 +427,14 @@ class PSIOGameManager:
         self._set_progress_text("")
         self._update_progress_bar(100)
 
-        md = MessageDialog(
-            message,
-            title='Game Details',
-            width=650,
-            padding=(20, 20)
-        )
-
         if self.debug_mode:
-            md.show()
+            self.window.after(0, lambda m=message: MessageDialog(
+                m, title='Game Details', width=650, padding=(20, 20)
+            ).show())
 
-        self._display_game_list()
-        self._update_window()
+        self.window.after(0, self._display_game_list)
+        self.window.after(0, lambda: self.button_start.configure(state='normal'))
+        self.window.after(0, lambda: self.button_browse.configure(state='normal'))
     # ************************************************************************************
 
 
@@ -489,6 +487,33 @@ class PSIOGameManager:
 
 
     # ************************************************************************************
+    def _append_game_row(self, game: Game):
+        """Insert one game row at the bottom of the Treeview without rebuilding the whole list."""
+        bools = ('No', 'Yes')
+        game_id = game.get_id()
+        game_name = game.get_cue_sheet().get_game_name()
+        disc_number = game.get_disc_number()
+        number_of_bins = len(game.get_cue_sheet().get_bin_files())
+        name_valid = bools[len(game_name) <= self.MAX_GAME_NAME_LENGTH and '.' not in game_name]
+        cu2_present = bools[game.get_cu2_present()] if game.get_cu2_required() else "*"
+        lst_present = ("Yes" if game.get_multi_disc_file_present() else "No") if disc_number > 0 else "*"
+        bmp_present = bools[game.get_cover_art_present()]
+        libcrypt_patch = ("Yes" if game.get_libcrypt_applied() else "No") if game.get_libcrypt_required() else "*"
+        crc_32 = "Yes" if game.get_crc_valid() else "No" if self.crc_check.get() else "*"
+        values = (game_id, game_name, disc_number, number_of_bins, crc_32, name_valid,
+                  bmp_present, cu2_present, lst_present, libcrypt_patch)
+        iid = len(self.game_list) - 1
+
+        def _insert():
+            self.treeview_game_list.insert(parent='', index='end', iid=iid, text='', values=values)
+            self.treeview_game_list.yview_moveto(1)
+            self.treeview_game_list.selection_set(iid)
+
+        self.window.after(0, _insert)
+    # ************************************************************************************
+
+
+    # ************************************************************************************
     def _display_game_list(self):
         """Display game list in treeview"""
 
@@ -509,7 +534,7 @@ class PSIOGameManager:
             # Check if the games is a multi-disc game and if an LST file is available
             lst_present = "*"
             if game.get_disc_number() > 0:
-                lst_present = "yes" if game.get_multi_disc_file_present() else "No"
+                lst_present = "Yes" if game.get_multi_disc_file_present() else "No"
 
             # Check if the cover art is available
             bmp_present = bools[game.get_cover_art_present()]
@@ -609,35 +634,31 @@ class PSIOGameManager:
             # Highlight the clicked row
             tree.selection_set(item)
 
-    def _update_progress_bar(self, value):
+    def _update_progress_bar(self, value: int):
         """Update the progress bar"""
-        self.progress_bar['value'] = value
-        if self.window:
-            self.window.update()
-
-    def _update_window(self):
-        """Update the main UI window"""
-        if self.window:
-            self.window.update()
+        self.window.after(0, lambda: self.progress_bar.configure(value=value))
 
     def _browse_button_clicked(self):
         """Handle browse button click"""
         selected_path = filedialog.askdirectory(initialdir='/', title='Select Game Directory')
+        if not selected_path:
+            return
         self.src_path.set(selected_path)
-        self.label_src.configure(text= f"  {self.src_path.get()}")
-        self._parse_game_list()
-        self.button_start['state'] = 'normal'
+        self.label_src.configure(text=f"  {self.src_path.get()}")
+        self.button_start['state'] = 'disabled'
+        self.button_browse['state'] = 'disabled'
+        threading.Thread(target=self._parse_game_list, daemon=True).start()
 
     def _start_button_clicked(self):
         """Handle start button click"""
         if self.src_path.get():
             self.button_start['state'] = 'disabled'
-            self.process_games()
-            self.button_start['state'] = 'normal'
+            threading.Thread(target=self._run_processing, daemon=True).start()
 
-    def _checkbox_changed(self):
-        """Handle checkbox change"""
-        self.redump_rename.set(True if self.redump_rename.get() else False)
+    def _run_processing(self):
+        """Run process_games on a background thread and re-enable the button when done."""
+        self.process_games()
+        self.window.after(0, lambda: self.button_start.configure(state='normal'))
 
     def _get_stored_theme(self):
         """Get stored theme from config"""
@@ -657,6 +678,48 @@ class PSIOGameManager:
         style = Style()
         style.theme_use(theme_name)
         self._store_selected_theme(theme_name)
+
+
+    # ************************************************************************************
+    def _show_about_dialog(self):
+        """Show the About dialog"""
+        dialog = Toplevel(self.window)
+        dialog.title('About')
+        dialog.resizable(False, False)
+        dialog.grab_set()
+
+        # Apply the same icon as the main window
+        try:
+            if sys.platform.lower() == "win32":
+                icon_path = self._resource_path('icon.ico')
+                if exists(icon_path):
+                    dialog.iconbitmap(icon_path)
+            elif self.icon:
+                dialog.iconphoto(True, self.icon)
+        except TclError:
+            pass
+
+        # Centre over the parent window
+        dialog.update_idletasks()
+        pw, ph = self.window.winfo_width(), self.window.winfo_height()
+        px, py = self.window.winfo_x(), self.window.winfo_y()
+        dw, dh = 420, 280
+        dialog.geometry(f'{dw}x{dh}+{px + (pw - dw) // 2}+{py + (ph - dh) // 2}')
+
+        Label(dialog, text='PSIO Game Manager',
+              font=('Arial', 18, 'bold'), bootstyle='primary').pack(pady=(30, 4))
+        Label(dialog, text=f'Version {self.CURRENT_REVISION}',
+              font=('Arial', 12)).pack(pady=(0, 16))
+        Label(dialog,
+              text='An open-source tool for preparing PlayStation\ngames for use with a PSIO device.',
+              font=('Arial', 10), justify=CENTER).pack(pady=(0, 16))
+        Label(dialog, text='Copyright © 2021 LoGi26',
+              font=('Arial', 9)).pack(pady=(0, 4))
+        Label(dialog, text='Licensed under the GNU General Public License v2',
+              font=('Arial', 9)).pack(pady=(0, 20))
+        Button(dialog, text='Close', command=dialog.destroy,
+               bootstyle='primary', width=12).pack()
+    # ************************************************************************************
 
 
     # ************************************************************************************
@@ -697,7 +760,7 @@ class PSIOGameManager:
 
         # Redump rename Checkbox
         def toggle_redump_rename():
-            print(f"CRC Check is now: {self.redump_rename.get()}")
+            self._debug_print(f"Auto Rename is now: {self.redump_rename.get()}")
 
         file_menu.add_checkbutton(
             label="Auto Rename",
@@ -711,7 +774,7 @@ class PSIOGameManager:
 
         # CRC Checkbox
         def toggle_crc_check():
-            print(f"CRC Check is now: {self.crc_check.get()}")
+            self._debug_print(f"CRC Check is now: {self.crc_check.get()}")
 
         file_menu.add_checkbutton(
             label="CRC Check",
@@ -729,7 +792,7 @@ class PSIOGameManager:
         menubar.add_cascade(label="Options", menu=file_menu, underline=0)
 
         help_menu = Menu(menubar, tearoff=0)
-        help_menu.add_command(label='About')
+        help_menu.add_command(label='About', command=self._show_about_dialog)
         menubar.add_cascade(label="Help", menu=help_menu, underline=0)
 
         # Browse frame
@@ -775,8 +838,8 @@ class PSIOGameManager:
         self.label_src = Label(self.window, text=self.src_path.get(), width=60, borderwidth=2, relief='solid', bootstyle="primary", font=("Arial", 11))
         self.label_src.place(x=30, y=35, width=window_width -200, height=30)
 
-        button_src_browse = Button(self.window, text='Browse', bootstyle="primary", command=self._browse_button_clicked)
-        button_src_browse.place(x=window_width - 155, y=35, width=130, height=30)
+        self.button_browse = Button(self.window, text='Browse', bootstyle="primary", command=self._browse_button_clicked)
+        self.button_browse.place(x=window_width - 155, y=35, width=130, height=30)
     # ************************************************************************************
 
 
@@ -845,7 +908,7 @@ class PSIOGameManager:
         self.button_start = Button(self.window, text='Process', command=self._start_button_clicked, state=DISABLED)
         self.button_start.place(x=30, y=frame_y +100, width=window_width -50, height=30)
 
-        self.label_progress.after(1000, self.db.ensure_database_exists())
+        self.label_progress.after(1000, self.db.ensure_database_exists)
     # ************************************************************************************
 
 

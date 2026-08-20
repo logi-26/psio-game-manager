@@ -5,11 +5,18 @@ Generates a CU2 file from a PlayStation CUE file
 from os.path import exists, join, getsize
 from pathlib import Path
 from typing import Optional
-from re import compile
+from re import compile, IGNORECASE
 
 
 class Cu2Generator:
     """A class to convert CUE sheet's to CU2"""
+
+    _RE_MODE2 = compile(r'.*mode2/2352.*', IGNORECASE)
+    _RE_TRACK = compile(r'[ \t]*track.*', IGNORECASE)
+    _RE_FILE_TRACK = compile(r'[ \t]*file.*track.*', IGNORECASE)
+    _RE_INDEX_00 = compile(r'.*index\s+0?0\b.*', IGNORECASE)
+    _RE_INDEX_01 = compile(r'.*index\s+0?1\b.*', IGNORECASE)
+
     def __init__(self, debug_mode: bool = False):
         """Initialise the CueConverter"""
         self.debug_mode = debug_mode
@@ -110,7 +117,7 @@ class Cu2Generator:
     def _is_cue_mode_valid(self, cue_path: str, cue_content: list) -> bool:
         """Check if the CUE file uses MODE2/2352"""
         for line in cue_content:
-            if compile('.*[Mm][Oo][Dd][Ee]2/2352.*').match(line):
+            if self._RE_MODE2.match(line):
                 return True
         self._debug_print(f'ERROR: This cue sheet is not in MODE2/2352: {cue_path}')
         return False
@@ -120,8 +127,8 @@ class Cu2Generator:
     # ************************************************************************************
     def _get_number_of_tracks(self, cue_content: list) -> int:
         """Count the number of tracks in the CUE sheet"""
-        return sum(1 for line in cue_content if compile('[ \t]*[Tt][Rr][Aa][Cc][Kk].*').match(line)
-                   and not compile('[ \t]*[Ff][Ii][Ll][Ee].*[Tt][Rr][Aa][Cc][Kk].*').match(line))
+        return sum(1 for line in cue_content if self._RE_TRACK.match(line)
+                   and not self._RE_FILE_TRACK.match(line))
     # ************************************************************************************
 
 
@@ -142,11 +149,18 @@ class Cu2Generator:
     # ************************************************************************************
     def _get_track_index(self, cue_content: list, track: int) -> tuple:
         """Find the index positions (00 and 01) for a given track"""
+        track_re = compile(rf'.*track\s+0?{track}\b.*', IGNORECASE)
         for i, line in enumerate(cue_content):
-            if compile(f'.*[Tt][Rr][Aa][Cc][Kk] 0?{track}.*').match(line):
-                index_00 = cue_content[i + 1][::-1][:8][::-1] if i + 1 < len(cue_content) and compile('.*[Ii][Nn][Dd][Ee][Xx] 0?0.*').match(cue_content[i + 1]) else None
-                index_01 = cue_content[i + 1][::-1][:8][::-1] if i + 1 < len(cue_content) and compile('.*[Ii][Nn][Dd][Ee][Xx] 0?1.*').match(cue_content[i + 1]) else \
-                           cue_content[i + 2][::-1][:8][::-1] if i + 2 < len(cue_content) and compile('.*[Ii][Nn][Dd][Ee][Xx] 0?1.*').match(cue_content[i + 2]) else None
+            if track_re.match(line):
+                index_00 = cue_content[i + 1][::-1][:8][::-1] \
+                    if i + 1 < len(cue_content) and self._RE_INDEX_00.match(cue_content[i + 1]) \
+                    else None
+                if i + 1 < len(cue_content) and self._RE_INDEX_01.match(cue_content[i + 1]):
+                    index_01 = cue_content[i + 1][::-1][:8][::-1]
+                elif i + 2 < len(cue_content) and self._RE_INDEX_01.match(cue_content[i + 2]):
+                    index_01 = cue_content[i + 2][::-1][:8][::-1]
+                else:
+                    index_01 = None
                 return index_00, index_01
         return None, None
     # ************************************************************************************
