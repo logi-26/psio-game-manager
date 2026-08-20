@@ -1,4 +1,4 @@
-'''
+﻿'''
 Performs CRC-32 checks on each of the Tracks in the BIN file/s
 '''
 
@@ -60,7 +60,7 @@ class CrcFileVerifier:
             bytes_read = 0
 
             # Read the chunk and perform CRC hash
-            while chunk := f.read(8192):
+            while chunk := f.read(256 * 1024):
                 if max_bytes is not None and bytes_read + len(chunk) > max_bytes:
                     chunk = chunk[:max_bytes - bytes_read]
                 crc32_hash = crc32(chunk, crc32_hash)
