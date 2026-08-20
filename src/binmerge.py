@@ -24,9 +24,9 @@ class BinMerger:
     # ************************************************************************************
     def _sectors_to_cue_stamp(self, sectors: int):
         """Convert sectors to a CUE file timestamp (MM:SS:FF)"""
-        minutes = sectors / 4500
+        minutes = sectors // 4500
         fields = sectors % 4500
-        seconds = fields / 75
+        seconds = fields // 75
         fields = sectors % 75
         return '%02d:%02d:%02d' % (minutes, seconds, fields)
     # ************************************************************************************
@@ -48,7 +48,7 @@ class BinMerger:
                     index_id = self._pad_zero(index["id"])
                     cue_sheet += f'     INDEX {index_id} {sectors_to_cue_stamp}\n'
 
-                sector_pos += bin_file.get_size() / track.get_block_size()
+                sector_pos += bin_file.get_size() // track.get_block_size()
 
         return cue_sheet
     # ************************************************************************************
