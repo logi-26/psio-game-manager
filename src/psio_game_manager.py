@@ -115,7 +115,7 @@ class PSIOGameManager:
         # GUI elements
         self.progress_bar = None
         self.button_start = None
-        self.button_browse = None
+
         self.button_cancel = None
         self.treeview_game_list = None
         self.label_src = None
@@ -123,7 +123,7 @@ class PSIOGameManager:
         self.summary_labels = {}
         self.selected_theme_var = None
         self.label_dest = None
-        self.button_browse_dest = None
+
 
         self._cancel_event = threading.Event()
 
@@ -455,7 +455,6 @@ class PSIOGameManager:
         self._update_progress_bar(100)
 
         self.window.after(0, lambda: self.button_cancel.configure(state='disabled'))
-        self.window.after(0, lambda: self.button_browse.configure(state='normal'))
 
         if self._cancel_event.is_set():
             self._set_progress_text("Cancelled")
@@ -682,7 +681,6 @@ class PSIOGameManager:
         self.src_path.set(selected_path)
         self.label_src.configure(text=f"  {self.src_path.get()}")
         self.button_start['state'] = 'disabled'
-        self.button_browse['state'] = 'disabled'
         self.button_cancel['state'] = 'normal'
         self._cancel_event.clear()
         for item in self.treeview_game_list.get_children():
@@ -695,7 +693,6 @@ class PSIOGameManager:
         """Handle start button click"""
         if self.src_path.get():
             self.button_start['state'] = 'disabled'
-            self.button_browse['state'] = 'disabled'
             self.button_cancel['state'] = 'normal'
             self._cancel_event.clear()
             threading.Thread(target=self._run_processing, daemon=True).start()
@@ -704,7 +701,6 @@ class PSIOGameManager:
         """Run process_games on a background thread and re-enable the buttons when done."""
         self.process_games()
         self.window.after(0, lambda: self.button_start.configure(state='normal'))
-        self.window.after(0, lambda: self.button_browse.configure(state='normal'))
         self.window.after(0, lambda: self.button_cancel.configure(state='disabled'))
 
     def _cancel_button_clicked(self):
@@ -727,7 +723,7 @@ class PSIOGameManager:
 
     def _get_stored_theme(self):
         """Get stored theme from config"""
-        return self._load_config().get('theme', 'everforest-dark')
+        return self._load_config().get('theme', 'bootstrap-dark')
 
     def _store_selected_theme(self, theme_name):
         """Store selected theme"""
@@ -811,6 +807,41 @@ class PSIOGameManager:
 
 
     # ************************************************************************************
+    def _show_bios_warning_dialog(self):
+        """Show a themed warning dialog when the BIOS file is missing from the destination"""
+        dialog = Toplevel(self.window)
+        dialog.title('BIOS Not Found')
+        dialog.resizable(False, False)
+        dialog.grab_set()
+
+        try:
+            if sys.platform.lower() == "win32":
+                icon_path = self._resource_path('icon.ico')
+                if exists(icon_path):
+                    dialog.iconbitmap(icon_path)
+            elif self.icon:
+                dialog.iconphoto(True, self.icon)
+        except TclError:
+            pass
+
+        pw, ph = self.window.winfo_width(), self.window.winfo_height()
+        px, py = self.window.winfo_x(), self.window.winfo_y()
+        dw, dh = 440, 220
+        dialog.geometry(f'{dw}x{dh}+{px + (pw - dw) // 2}+{py + (ph - dh) // 2}')
+
+        Label(dialog, text='BIOS File Not Found',
+              font=('Arial', 14, 'bold'), bootstyle='warning').pack(pady=(24, 10))
+        Label(dialog,
+              text='SCPH1001.BIN was not found in the selected destination.\n'
+                   'PSIO requires this file in the root of the SD card to function.\n\n'
+                   'Add it to the SD card before using the device.',
+              font=('Arial', 10), justify=CENTER).pack(pady=(0, 18))
+        Button(dialog, text='OK', command=dialog.destroy,
+               bootstyle='warning', width=12).pack()
+    # ************************************************************************************
+
+
+    # ************************************************************************************
     def _show_about_dialog(self):
         """Show the About dialog"""
         dialog = Toplevel(self.window)
@@ -858,7 +889,7 @@ class PSIOGameManager:
     def setup_gui(self):
         """Setup the GUI"""
         window_width = 1300
-        window_height = 930
+        window_height = 895
 
         try:
             self.window = Window(
@@ -870,7 +901,7 @@ class PSIOGameManager:
         except Exception:
             self.window = Window(
                 title=f'PSIO Game Manager v{self.CURRENT_REVISION}',
-                themename='everforest-dark',
+                themename='bootstrap-dark',
                 size=[window_width, window_height],
                 resizable=[False, False]
             )
@@ -1005,33 +1036,33 @@ class PSIOGameManager:
 
     # ************************************************************************************
     def _gui_browse_frame(self, window_width: int):
-        """Create the browse frame"""
-        browse_frame = Labelframe(self.window, text='Root Directory', bootstyle="primary")
-        browse_frame.place(x=15, y=10, width=window_width -30, height=70)
+        """Create the paths frame containing source and destination rows"""
+        browse_frame = Labelframe(self.window, text='Paths', bootstyle="primary")
+        browse_frame.place(x=15, y=10, width=window_width - 30, height=120)
 
-        self.label_src = Label(self.window, text=self.src_path.get(), width=60, borderwidth=2, relief='solid', bootstyle="primary", font=("Arial", 11))
-        self.label_src.place(x=30, y=35, width=window_width -200, height=30)
-
-        self.button_browse = Button(self.window, text='Browse', bootstyle="primary", command=self._browse_button_clicked)
-        self.button_browse.place(x=window_width - 155, y=35, width=130, height=30)
+        self.label_src = Label(self.window, text='  Select game library folder', width=60, borderwidth=2, relief='solid', bootstyle="primary", font=("Arial", 11), cursor="hand2")
+        self.label_src.place(x=30, y=30, width=window_width - 60, height=30)
+        self.label_src.bind("<Button-1>", lambda _: self._browse_button_clicked())
     # ************************************************************************************
 
 
     # ************************************************************************************
     def _gui_dest_frame(self, window_width: int):
-        """Create the destination (SD card) frame"""
-        dest_frame = Labelframe(self.window, text='Destination (SD Card)', bootstyle="secondary")
-        dest_frame.place(x=15, y=90, width=window_width - 30, height=70)
-
+        """Create the destination row within the Paths frame"""
         self.label_dest = Label(self.window,
                                 text='  Optional: select SD card destination folder',
                                 width=60, borderwidth=2, relief='solid',
-                                bootstyle="secondary", font=("Arial", 11))
-        self.label_dest.place(x=30, y=115, width=window_width - 200, height=30)
+                                bootstyle="secondary", font=("Arial", 11), cursor="hand2")
+        self.label_dest.place(x=30, y=72, width=window_width - 60, height=30)
+        self.label_dest.bind("<Button-1>", lambda _: self._browse_dest_button_clicked())
+    # ************************************************************************************
 
-        self.button_browse_dest = Button(self.window, text='Browse', bootstyle="secondary",
-                                         command=self._browse_dest_button_clicked)
-        self.button_browse_dest.place(x=window_width - 155, y=115, width=130, height=30)
+
+    # ************************************************************************************
+    def _check_bios_in_destination(self, dest: str) -> bool:
+        """Return True if a PSIO BIOS file is present in the destination root"""
+        bios_names = ['SCPH1001.BIN', 'SCPH1001.bin', 'scph1001.bin']
+        return any(exists(join(dest, name)) for name in bios_names)
     # ************************************************************************************
 
 
@@ -1043,6 +1074,9 @@ class PSIOGameManager:
             return
         self.dest_path.set(selected_path)
         self.label_dest.configure(text=f"  {self.dest_path.get()}")
+
+        if not self._check_bios_in_destination(selected_path):
+            self._show_bios_warning_dialog()
     # ************************************************************************************
 
 
@@ -1086,7 +1120,7 @@ class PSIOGameManager:
     def _gui_game_list_frame(self, window_width: int):
         """Create the game list frame"""
         game_list_frame = Labelframe(self.window, text='Games', bootstyle="primary")
-        game_list_frame.place(x=15, y=180, width=window_width -30, height=450)
+        game_list_frame.place(x=15, y=145, width=window_width -30, height=450)
 
         # Create a custom style for the Treeview
         style = Style()
@@ -1125,8 +1159,8 @@ class PSIOGameManager:
                                       command=self.treeview_game_list.yview)
 
         self.treeview_game_list.configure(yscroll=scrollbar_game_list.set)
-        self.treeview_game_list.place(x=30, y=200, width=window_width -70, height=410)
-        scrollbar_game_list.place(x=window_width - 35, y=200, height=410)
+        self.treeview_game_list.place(x=30, y=165, width=window_width -70, height=410)
+        scrollbar_game_list.place(x=window_width - 35, y=165, height=410)
     # ************************************************************************************
 
 
@@ -1134,7 +1168,7 @@ class PSIOGameManager:
     def _gui_summary_frame(self, window_width: int):
         """Create the summary frame"""
         summary_frame = Labelframe(self.window, text='Summary', bootstyle="primary")
-        summary_frame.place(x=15, y=640, width=window_width - 30, height=80)
+        summary_frame.place(x=15, y=605, width=window_width - 30, height=80)
 
         stats = ['Total', 'Unidentified', 'Invalid Names', 'Missing Covers', 'Multi-bin', 'Multi-disc']
 
@@ -1178,7 +1212,7 @@ class PSIOGameManager:
     # ************************************************************************************
     def _gui_process_frame(self, window_width: int):
         """Create the process frame"""
-        frame_y = 730
+        frame_y = 695
 
         progress_frame = Labelframe(self.window, text='Process', bootstyle="primary")
         progress_frame.place(x=20, y=frame_y, width=window_width -30, height=155)
