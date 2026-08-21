@@ -2,7 +2,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -48,9 +48,10 @@ Copyright (C) 2021 LoGi26
 import sys
 import threading
 import webbrowser
+import urllib.request
 from datetime import datetime
 from os.path import exists, join, dirname, abspath
-from json import load, dumps
+from json import load, loads, dumps
 from argparse import ArgumentParser
 from ast import literal_eval
 from tkinter import Menu, filedialog, StringVar, BooleanVar, TclError, PhotoImage, NO, CENTER, VERTICAL
@@ -111,7 +112,6 @@ class PSIOGameManager:
         self.redump_rename = None
 
         # GUI elements
-        self.label_progress = None
         self.progress_bar = None
         self.button_start = None
         self.button_browse = None
@@ -119,6 +119,8 @@ class PSIOGameManager:
         self.treeview_game_list = None
         self.label_src = None
         self.cover_art_frame = None
+        self.summary_labels = {}
+        self.selected_theme_var = None
 
         self._cancel_event = threading.Event()
 
@@ -148,8 +150,9 @@ class PSIOGameManager:
 
     # ************************************************************************************
     def _set_progress_text(self, message: str):
-        """Set the text in the progress label"""
-        self.window.after(0, lambda: self.label_progress.configure(text=message))
+        """Set the text inside the progress bar"""
+        safe = message.replace('{', '{{').replace('}', '}}')
+        self.window.after(0, lambda: self.progress_bar.configure(mask=safe))
     # ************************************************************************************
 
 
@@ -584,6 +587,8 @@ class PSIOGameManager:
 
                 # Highlight the updated row
                 self.treeview_game_list.selection_set(count)
+
+        self._update_summary()
     # ************************************************************************************
 
 
@@ -675,8 +680,8 @@ class PSIOGameManager:
         self._cancel_event.clear()
         for item in self.treeview_game_list.get_children():
             self.treeview_game_list.delete(item)
-        self.progress_bar.configure(value=0)
-        self.label_progress.configure(text='')
+        self._clear_summary()
+        self.progress_bar.configure(value=0, mask='')
         threading.Thread(target=self._parse_game_list, daemon=True).start()
 
     def _start_button_clicked(self):
@@ -701,23 +706,101 @@ class PSIOGameManager:
         self.button_cancel['state'] = 'disabled'
         self._set_progress_text("Cancelling...")
 
-    def _get_stored_theme(self):
-        """Get stored theme from config"""
+    def _load_config(self) -> dict:
+        """Load the full config dict from disk"""
         if exists(self.config_file_path):
             with open(self.config_file_path, encoding="utf-8") as config_file:
-                return load(config_file).get('theme', 'bootstrap-dark')
-        return "bootstrap-dark"
+                return load(config_file)
+        return {}
+
+    def _save_config(self, config: dict):
+        """Save the full config dict to disk"""
+        with open(self.config_file_path, mode="w", encoding="utf-8") as config_file:
+            config_file.write(dumps(config))
+
+    def _get_stored_theme(self):
+        """Get stored theme from config"""
+        return self._load_config().get('theme', 'everforest-dark')
 
     def _store_selected_theme(self, theme_name):
         """Store selected theme"""
-        with open(self.config_file_path, mode="w", encoding="utf-8") as config_file:
-            config_file.write(dumps({"theme": theme_name}))
+        config = self._load_config()
+        config['theme'] = theme_name
+        self._save_config(config)
 
     def _switch_theme(self, theme_name):
         """Switch UI theme"""
         style = Style()
         style.theme_use(theme_name)
         self._store_selected_theme(theme_name)
+
+    def _toggle_check_update(self):
+        """Persist the check update on startup preference"""
+        config = self._load_config()
+        config['check_update'] = self.check_update_on_startup.get()
+        self._save_config(config)
+
+
+    # ************************************************************************************
+    def _check_for_update(self):
+        """Check GitHub for a newer release and notify the user if one is available"""
+        try:
+            url = 'https://api.github.com/repos/logi-26/psio-game-manager/releases/latest'
+            req = urllib.request.Request(url, headers={'User-Agent': 'psio-game-manager'})
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = loads(response.read())
+
+            latest_tag = data.get('tag_name', '').lstrip('v')
+            if not latest_tag:
+                return
+
+            current = tuple(int(x) for x in str(self.CURRENT_REVISION).split('.'))
+            latest = tuple(int(x) for x in latest_tag.split('.'))
+
+            if latest > current:
+                self.window.after(0, lambda: self._show_update_dialog(latest_tag))
+        except Exception:
+            pass
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def _show_update_dialog(self, latest_version: str):
+        """Show a dialog informing the user that a new version is available"""
+        dialog = Toplevel(self.window)
+        dialog.title('Update Available')
+        dialog.resizable(False, False)
+        dialog.grab_set()
+
+        try:
+            if sys.platform.lower() == "win32":
+                icon_path = self._resource_path('icon.ico')
+                if exists(icon_path):
+                    dialog.iconbitmap(icon_path)
+            elif self.icon:
+                dialog.iconphoto(True, self.icon)
+        except TclError:
+            pass
+
+        pw, ph = self.window.winfo_width(), self.window.winfo_height()
+        px, py = self.window.winfo_x(), self.window.winfo_y()
+        dw, dh = 360, 160
+        dialog.geometry(f'{dw}x{dh}+{px + (pw - dw) // 2}+{py + (ph - dh) // 2}')
+
+        Label(dialog, text='Update Available',
+              font=('Arial', 14, 'bold'), bootstyle='primary').pack(pady=(24, 8))
+        Label(dialog, text=f'Version {latest_version} is available (current: {self.CURRENT_REVISION})',
+              font=('Arial', 9)).pack(pady=(0, 16))
+
+        btn_frame = Labelframe(dialog, bootstyle='default')
+        btn_frame.pack()
+        Button(btn_frame, text='View on GitHub',
+               bootstyle='primary', width=14,
+               command=lambda: (webbrowser.open('https://github.com/logi-26/psio-game-manager/releases'), dialog.destroy())).pack(side='left', padx=(0, 8))
+        Button(btn_frame, text='Dismiss',
+               bootstyle='secondary', width=10,
+               command=dialog.destroy).pack(side='left')
+    # ************************************************************************************
 
 
     # ************************************************************************************
@@ -757,7 +840,7 @@ class PSIOGameManager:
               font=('Arial', 10), justify=CENTER).pack(pady=(0, 16))
         Label(dialog, text='Copyright © 2021 LoGi26',
               font=('Arial', 9)).pack(pady=(0, 4))
-        Label(dialog, text='Licensed under the GNU General Public License v2',
+        Label(dialog, text='Licensed under the GNU General Public License v3',
               font=('Arial', 9)).pack(pady=(0, 20))
         Button(dialog, text='Close', command=dialog.destroy,
                bootstyle='primary', width=12).pack()
@@ -768,7 +851,7 @@ class PSIOGameManager:
     def setup_gui(self):
         """Setup the GUI"""
         window_width = 1300
-        window_height = 770
+        window_height = 850
 
         try:
             self.window = Window(
@@ -780,7 +863,7 @@ class PSIOGameManager:
         except Exception:
             self.window = Window(
                 title=f'PSIO Game Manager v{self.CURRENT_REVISION}',
-                themename='bootstrap-dark',
+                themename='everforest-dark',
                 size=[window_width, window_height],
                 resizable=[False, False]
             )
@@ -797,26 +880,56 @@ class PSIOGameManager:
         # Set default checkbox values
         self.redump_rename.set(True)
         self.crc_check.set(False)
+        self.check_update_on_startup = BooleanVar(self.window)
+        self.check_update_on_startup.set(self._load_config().get('check_update', True))
+        self.selected_theme_var = StringVar(self.window, value=self._get_stored_theme())
 
         # Menu setup
         menubar = Menu(self.window)
         self.window.config(menu=menubar)
 
-        file_menu = Menu(menubar, tearoff=0)
-        sub_menu = Menu(file_menu, tearoff=0)
+        # Menu > Colour Themes + Exit
+        main_menu = Menu(menubar, tearoff=0)
+        sub_menu = Menu(main_menu, tearoff=0)
         dark_menu = Menu(sub_menu, tearoff=0)
         light_menu = Menu(sub_menu, tearoff=0)
         all_themes = sorted(Style().theme_names())
         dark_themes = [t for t in all_themes if t.endswith('-dark')]
         light_themes = [t for t in all_themes if t.endswith('-light')]
         for theme in dark_themes:
-            dark_menu.add_command(label=theme.removesuffix('-dark'), command=lambda t=theme: self._switch_theme(t))
+            dark_menu.add_checkbutton(
+                label=theme.removesuffix('-dark'),
+                variable=self.selected_theme_var,
+                onvalue=theme,
+                offvalue='',
+                command=lambda t=theme: (self.selected_theme_var.set(t), self._switch_theme(t))
+            )
         for theme in light_themes:
-            light_menu.add_command(label=theme.removesuffix('-light'), command=lambda t=theme: self._switch_theme(t))
+            light_menu.add_checkbutton(
+                label=theme.removesuffix('-light'),
+                variable=self.selected_theme_var,
+                onvalue=theme,
+                offvalue='',
+                command=lambda t=theme: (self.selected_theme_var.set(t), self._switch_theme(t))
+            )
         sub_menu.add_cascade(label='Dark', menu=dark_menu)
         sub_menu.add_cascade(label='Light', menu=light_menu)
+        main_menu.add_command(label='About', command=self._show_about_dialog)
+        main_menu.add_checkbutton(label='Check for Update on Startup',
+                                  variable=self.check_update_on_startup,
+                                  command=self._toggle_check_update,
+                                  onvalue=True, offvalue=False)
+        main_menu.add_separator()
+        main_menu.add_cascade(label="Color Themes", menu=sub_menu)
+        main_menu.add_separator()
+        main_menu.add_command(label='Report Bug', command=lambda: webbrowser.open('https://github.com/logi-26/psio-game-manager/issues'))
+        main_menu.add_separator()
+        main_menu.add_command(label='Exit', command=self.window.destroy)
+        menubar.add_cascade(label="Menu", menu=main_menu)
 
-        # Redump rename Checkbox
+        # Options > Auto Rename + CRC Check
+        file_menu = Menu(menubar, tearoff=0)
+
         def toggle_redump_rename():
             self._debug_print(f"Auto Rename is now: {self.redump_rename.get()}")
 
@@ -830,7 +943,6 @@ class PSIOGameManager:
 
         file_menu.add_separator()
 
-        # CRC Checkbox
         def toggle_crc_check():
             self._debug_print(f"CRC Check is now: {self.crc_check.get()}")
 
@@ -842,23 +954,16 @@ class PSIOGameManager:
             offvalue=False
         )
 
-        file_menu.add_separator()
-
-        file_menu.add_cascade(label="Color Themes", menu=sub_menu)
-        file_menu.add_separator()
-        file_menu.add_command(label='Exit', command=self.window.destroy)
-        menubar.add_cascade(label="Options", menu=file_menu, underline=0)
-
-        help_menu = Menu(menubar, tearoff=0)
-        help_menu.add_command(label='About', command=self._show_about_dialog)
-        help_menu.add_command(label='Report Bug', command=lambda: webbrowser.open('https://github.com/logi-26/psio-game-manager/issues'))
-        menubar.add_cascade(label="Help", menu=help_menu, underline=0)
+        menubar.add_cascade(label="Game Options", menu=file_menu, underline=0)
 
         # Browse frame
         self._gui_browse_frame(window_width)
 
         # Game list frame
         self._gui_game_list_frame(window_width)
+
+        # Summary frame
+        self._gui_summary_frame(window_width)
 
         # Process frame
         self._gui_process_frame(window_width)
@@ -951,18 +1056,60 @@ class PSIOGameManager:
 
 
     # ************************************************************************************
+    def _gui_summary_frame(self, window_width: int):
+        """Create the summary frame"""
+        summary_frame = Labelframe(self.window, text='Summary', bootstyle="primary")
+        summary_frame.place(x=15, y=560, width=window_width - 30, height=80)
+
+        stats = ['Total', 'Unidentified', 'Invalid Names', 'Missing Covers', 'Multi-bin', 'Multi-disc']
+
+        for i, stat in enumerate(stats):
+            summary_frame.columnconfigure(i, weight=1)
+            Label(summary_frame, text=stat, font=('Arial', 9), bootstyle='primary').grid(row=0, column=i, pady=(5, 0))
+            val_label = Label(summary_frame, text='-', font=('Arial', 14, 'bold'))
+            val_label.grid(row=1, column=i, pady=(0, 5))
+            self.summary_labels[stat] = val_label
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def _compute_summary(self) -> dict:
+        """Compute summary statistics from the current game list"""
+        total = len(self.game_list)
+        unidentified = sum(1 for g in self.game_list if g.get_id() is None)
+        no_cover = sum(1 for g in self.game_list if not g.get_cover_art_present() and g.get_disc_number() in (0, 1))
+        multi_bin = sum(1 for g in self.game_list if len(g.get_cue_sheet().get_bin_files()) > 1)
+        invalid_names = sum(1 for g in self.game_list if len(g.get_cue_sheet().get_game_name()) > self.MAX_GAME_NAME_LENGTH or '.' in g.get_cue_sheet().get_game_name())
+        multi_disc = sum(1 for g in self.game_list if g.get_disc_number() == 1)
+        return {'Total': total, 'Unidentified': unidentified, 'Missing Covers': no_cover,
+                'Multi-bin': multi_bin, 'Invalid Names': invalid_names, 'Multi-disc': multi_disc}
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def _update_summary(self):
+        """Update the summary panel labels with current game list stats"""
+        stats = self._compute_summary()
+        for key, label in self.summary_labels.items():
+            label.configure(text=str(stats[key]))
+
+    def _clear_summary(self):
+        """Reset all summary labels to the default placeholder"""
+        for label in self.summary_labels.values():
+            label.configure(text='-')
+    # ************************************************************************************
+
+
+    # ************************************************************************************
     def _gui_process_frame(self, window_width: int):
         """Create the process frame"""
-        frame_y = 580
+        frame_y = 650
 
         progress_frame = Labelframe(self.window, text='Process', bootstyle="primary")
         progress_frame.place(x=20, y=frame_y, width=window_width -30, height=155)
 
         self.progress_bar = Floodgauge(font=(None, 14, 'bold'), mask='', mode='determinate')
         self.progress_bar.place(x=30, y=frame_y +25, width=window_width -50, height=28)
-
-        self.label_progress = Label(self.window, text="", width=120, bootstyle="primary")
-        self.label_progress.place(x=30, y=frame_y +56, width=window_width -450, height=16)
 
         self.button_start = Button(self.window, text='Process', command=self._start_button_clicked, state=DISABLED)
         self.button_start.place(x=30, y=frame_y +75, width=window_width -50, height=30)
@@ -971,13 +1118,15 @@ class PSIOGameManager:
                                     command=self._cancel_button_clicked, state=DISABLED)
         self.button_cancel.place(x=30, y=frame_y +110, width=window_width -50, height=30)
 
-        self.label_progress.after(1000, self.db.ensure_database_exists)
+        self.window.after(1000, self.db.ensure_database_exists)
     # ************************************************************************************
 
 
     def run(self):
         """Run the application"""
         self.setup_gui()
+        if self.check_update_on_startup.get():
+            threading.Thread(target=self._check_for_update, daemon=True).start()
         self.window.mainloop()
         self.db.close()
 
