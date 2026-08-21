@@ -47,6 +47,7 @@ Copyright (C) 2021 LoGi26
 # System imports
 import sys
 import threading
+from datetime import datetime
 from os.path import exists, join, dirname, abspath
 from json import load, dumps
 from argparse import ArgumentParser
@@ -748,7 +749,9 @@ class PSIOGameManager:
         Label(dialog, text='PSIO Game Manager',
               font=('Arial', 18, 'bold'), bootstyle='primary').pack(pady=(30, 4))
         Label(dialog, text=f'Version {self.CURRENT_REVISION}',
-              font=('Arial', 12)).pack(pady=(0, 16))
+              font=('Arial', 12)).pack(pady=(0, 4))
+        Label(dialog, text=f'Last updated: {datetime.now().strftime("%B %Y")}',
+              font=('Arial', 9)).pack(pady=(0, 16))
         Label(dialog,
               text='An open-source tool for preparing PlayStation\ngames for use with a PSIO device.',
               font=('Arial', 10), justify=CENTER).pack(pady=(0, 16))
