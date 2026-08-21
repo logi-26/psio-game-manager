@@ -1,4 +1,6 @@
 ﻿pathlib2==2.3.7.post1
 pillow==10.4.0
+py7zr
+rarfile
 six==1.17.0
 ttkbootstrap==2.2.2
