@@ -1,6 +1,7 @@
 ﻿# System imports
 from os import listdir, scandir, makedirs, remove, access, R_OK
 from os.path import exists, join, dirname, splitext, isfile, isabs
+from PIL import Image
 from re import search, sub
 from shutil import copyfile, move, rmtree
 from typing import Optional
@@ -18,6 +19,7 @@ class Utils:
     """General utilities class"""
     MAX_GAME_NAME_LENGTH = 56
     INVALID_FILENAME_CHARS = r'[.\\/:*?"<>|]'
+    COVER_ART_SIZE = (128, 128)
     REGION_CODES = ['DTLS_', 'SCES_', 'SLES_', 'SLED_', 'SCED_', 'SCUS_',
                     'SLUS_', 'SLPS_', 'SCAJ_', 'SLKA_', 'SLPM_', 'SCPS_',
                     'SCPM_', 'PCPX_', 'PAPX_', 'PTPX_', 'LSP0_', 'LSP1_',
@@ -306,12 +308,39 @@ class Utils:
 
 
     # ************************************************************************************
+    def _fix_cover_art(self, bmp_path: str) -> bool:
+        """Ensure a BMP is 128x128 and 24-bit RGB. Resizes/converts in-place if needed.
+        Returns True if the file was modified."""
+        try:
+            with Image.open(bmp_path) as img:
+                if img.size == self.COVER_ART_SIZE and img.mode == 'RGB':
+                    return False
+                fixed = img.resize(self.COVER_ART_SIZE, Image.LANCZOS).convert('RGB')
+            fixed.save(bmp_path, format='BMP')
+            self._debug_print(f"Fixed cover art to 128x128 RGB: {bmp_path}")
+            return True
+        except Exception as e:
+            self._debug_print(f"Error fixing cover art '{bmp_path}': {e}")
+            return False
+    # ************************************************************************************
+
+
+    # ************************************************************************************
     def add_game_cover_art(self, game: Game):
-        """Add the game cover art"""
-        if game.get_cover_art_present():
-            return
+        """Add the game cover art if missing; resize/convert to 128x128 24-bit BMP if wrong size"""
         game_full_path = join(game.get_directory_path(), game.get_directory_name())
-        if self.db.copy_game_cover(game_full_path, game.get_id(), game.get_cue_sheet().get_game_name()):
+        game_name = game.get_cue_sheet().get_game_name()
+
+        if game.get_cover_art_present():
+            # Cover art exists — validate and fix dimensions/format if needed
+            bmp_path = join(game_full_path, f'{game_name}.bmp')
+            if not exists(bmp_path):
+                bmp_path = join(game_full_path, f'{game_name}.BMP')
+            if exists(bmp_path):
+                self._fix_cover_art(bmp_path)
+            return
+
+        if self.db.copy_game_cover(game_full_path, game.get_id(), game_name):
             game.set_cover_art_present(True)
     # ************************************************************************************
 
