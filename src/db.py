@@ -160,44 +160,6 @@ class GameDatabase:
 
 
     # ************************************************************************************
-    def _extract_game_cover_blob(self, row_id, image_out_path: str):
-        """Extract the game cover art data from the local database"""
-        if not self._conn:
-            return
-        try:
-            with self._lock:
-                cursor = self._conn.cursor()
-                cursor.execute('SELECT psio FROM covers WHERE id = ?', (row_id,))
-                image_blob = cursor.fetchone()
-                cursor.close()
-            if image_blob:
-                with open(image_out_path, 'wb') as output_file:
-                    output_file.write(image_blob[0])
-        except Error:
-            pass
-    # ************************************************************************************
-
-
-    # ************************************************************************************
-    def _extract_game_libcrypt_patch_blob(self, row_id, ppf_out_path: str):
-        """Extract the game LibCrypt PPF patch data from the local database"""
-        if not self._conn:
-            return
-        try:
-            with self._lock:
-                cursor = self._conn.cursor()
-                cursor.execute('SELECT psio FROM libcrypt_patches WHERE id = ?', (row_id,))
-                patch_blob = cursor.fetchone()
-                cursor.close()
-            if patch_blob:
-                with open(ppf_out_path, 'wb') as output_file:
-                    output_file.write(patch_blob[0])
-        except Error:
-            pass
-    # ************************************************************************************
-
-
-    # ************************************************************************************
     def get_game_data(self, game_id: str) -> dict:
         """Get disc_number, collection and libcrypt status in a single query"""
         if not game_id:
@@ -215,18 +177,6 @@ class GameDatabase:
                 'libcrypt': bool(row[2])
             }
         return {}
-
-    def get_database_disc_collection(self, game_id: str) -> str:
-        """Get the game collection from the local database"""
-        if not game_id:
-            return ''
-
-        formatted_game_id = game_id.replace('-', '_')
-        response = self.select(
-            'SELECT collection FROM games WHERE game_id = ?',
-            (formatted_game_id,)
-        )
-        return response[0][0] if response else ''
     # ************************************************************************************
 
 
@@ -259,51 +209,6 @@ class GameDatabase:
             'ORDER BY track_number',
             (formatted_game_id,)
         )
-    # ************************************************************************************
-
-
-    # ************************************************************************************
-    def get_database_disc_number(self, game_id: str):
-        """Get disc number from the local database"""
-        if not game_id:
-            return
-
-        formatted_game_id = game_id.replace('-', '_')
-        response = self.select(
-            'SELECT disc_number FROM games WHERE game_id = ?',
-            (formatted_game_id,)
-        )
-        return response[0][0] if response else 0
-    # ************************************************************************************
-
-
-    # ************************************************************************************
-    def get_libcrypt_status(self, game_id: str):
-        """Get libcrypt status from local database"""
-        if not game_id:
-            return
-
-        formatted_game_id = game_id.replace('-', '_')
-        response = self.select(
-            'SELECT libcrypt FROM games WHERE game_id = ?',
-            (formatted_game_id,)
-        )
-        return response[0][0] if response else 0
-    # ************************************************************************************
-
-
-    # ************************************************************************************
-    def libcrypt_patch_available(self, game_id: str) -> bool:
-        """Check if LibCrypt PPF patch is available in local database"""
-        if not game_id:
-            return False
-
-        formatted_game_id = game_id.replace('-', '_')
-        response = self.select(
-            'SELECT id FROM libcrypt_patches WHERE game_id = ?',
-            (formatted_game_id,)
-        )
-        return bool(response)
     # ************************************************************************************
 
 
