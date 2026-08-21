@@ -481,7 +481,7 @@ class PSIOGameManager:
         game_name = game.get_cue_sheet().get_game_name()
         disc_number = game.get_disc_number()
         number_of_bins = len(game.get_cue_sheet().get_bin_files())
-        name_valid = bools[len(game_name) <= self.MAX_GAME_NAME_LENGTH and '.' not in game_name]
+        name_valid = bools[self.utils.is_name_valid(game_name)]
         cu2_present = bools[game.get_cu2_present()] if game.get_cu2_required() else "*"
 
         # Check if the game is a multi-disc game and if an LST file is available
@@ -521,7 +521,7 @@ class PSIOGameManager:
         game_name = game.get_cue_sheet().get_game_name()
         disc_number = game.get_disc_number()
         number_of_bins = len(game.get_cue_sheet().get_bin_files())
-        name_valid = bools[len(game_name) <= self.MAX_GAME_NAME_LENGTH and '.' not in game_name]
+        name_valid = bools[self.utils.is_name_valid(game_name)]
         cu2_present = bools[game.get_cu2_present()] if game.get_cu2_required() else "*"
         lst_present = ("Yes" if game.get_multi_disc_file_present() else "No") if disc_number > 0 else "*"
         bmp_present = bools[game.get_cover_art_present()]
@@ -555,7 +555,7 @@ class PSIOGameManager:
             game_name = game.get_cue_sheet().get_game_name()
             disc_number = game.get_disc_number()
             number_of_bins = len(game.get_cue_sheet().get_bin_files())
-            name_valid = bools[len(game_name) <= self.MAX_GAME_NAME_LENGTH and '.' not in game_name]
+            name_valid = bools[self.utils.is_name_valid(game_name)]
             cu2_present = bools[game.get_cu2_present()] if game.get_cu2_required() else "*"
 
             # Check if the games is a multi-disc game and if an LST file is available
@@ -1079,7 +1079,7 @@ class PSIOGameManager:
         unidentified = sum(1 for g in self.game_list if g.get_id() is None)
         no_cover = sum(1 for g in self.game_list if not g.get_cover_art_present() and g.get_disc_number() in (0, 1))
         multi_bin = sum(1 for g in self.game_list if len(g.get_cue_sheet().get_bin_files()) > 1)
-        invalid_names = sum(1 for g in self.game_list if len(g.get_cue_sheet().get_game_name()) > self.MAX_GAME_NAME_LENGTH or '.' in g.get_cue_sheet().get_game_name())
+        invalid_names = sum(1 for g in self.game_list if not self.utils.is_name_valid(g.get_cue_sheet().get_game_name()))
         multi_disc = sum(1 for g in self.game_list if g.get_disc_number() == 1)
         return {'Total': total, 'Unidentified': unidentified, 'Missing Covers': no_cover,
                 'Multi-bin': multi_bin, 'Invalid Names': invalid_names, 'Multi-disc': multi_disc}

@@ -414,10 +414,17 @@ class Utils:
 
 
     # ************************************************************************************
+    def is_name_valid(self, game_name: str) -> bool:
+        """Return True if the game name is safe for PSIO (FAT32, no invalid chars, within length limit)"""
+        return len(game_name) <= self.MAX_GAME_NAME_LENGTH and not search(self.INVALID_FILENAME_CHARS, game_name)
+    # ************************************************************************************
+
+
+    # ************************************************************************************
     def validate_game_name(self, game: Game):
         """Validate the game name"""
         game_name = game.get_cue_sheet().get_game_name()
-        if len(game_name) > self.MAX_GAME_NAME_LENGTH or '.' in game_name:
+        if not self.is_name_valid(game_name):
             new_game_name = self.game_name_validator(game_name).strip()
 
             if new_game_name != game_name:
