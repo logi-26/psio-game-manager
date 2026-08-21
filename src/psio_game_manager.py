@@ -797,9 +797,16 @@ class PSIOGameManager:
 
         file_menu = Menu(menubar, tearoff=0)
         sub_menu = Menu(file_menu, tearoff=0)
-        themes = ['cyborg', 'darkly', 'vapor', 'superhero', 'solar', 'morph', 'sandstone', 'simplex', 'yeti']
-        for theme in themes:
-            sub_menu.add_command(label=theme, command=lambda t=theme: self._switch_theme(t))
+        dark_menu = Menu(sub_menu, tearoff=0)
+        light_menu = Menu(sub_menu, tearoff=0)
+        dark_themes = ['cyborg', 'darkly', 'solar', 'superhero', 'vapor']
+        light_themes = ['cerculean', 'cosmo', 'flatly', 'journal', 'litera', 'lumen', 'minty', 'morph', 'pulse', 'sandstone', 'simplex', 'united', 'yeti']
+        for theme in dark_themes:
+            dark_menu.add_command(label=theme, command=lambda t=theme: self._switch_theme(t))
+        for theme in light_themes:
+            light_menu.add_command(label=theme, command=lambda t=theme: self._switch_theme(t))
+        sub_menu.add_cascade(label='Dark', menu=dark_menu)
+        sub_menu.add_cascade(label='Light', menu=light_menu)
 
         # Redump rename Checkbox
         def toggle_redump_rename():
