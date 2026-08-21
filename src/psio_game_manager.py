@@ -378,6 +378,14 @@ class PSIOGameManager:
     def _create_game_list(self, selected_path: str):
         """Create and populate the global game list."""
         self.game_list = []
+
+        self._set_progress_text("Scanning for archives...")
+        extracted = self.utils.find_and_extract_game_archives(
+            selected_path, progress_callback=self._set_progress_text
+        )
+        if extracted:
+            self._debug_print(f'\nExtracted {extracted} archive(s)\n')
+
         sub_folders = self.utils.get_sub_folders(selected_path)
 
         self._debug_print('\nGAME DETAILS:\n')

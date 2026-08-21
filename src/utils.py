@@ -1,11 +1,37 @@
 ﻿# System imports
+import subprocess
+import zipfile
 from os import listdir, scandir, makedirs, remove, access, R_OK
 from os.path import exists, join, dirname, splitext, isfile, isabs
 from PIL import Image
 from re import search, sub
-from shutil import copyfile, move, rmtree
+from shutil import copyfile, move, rmtree, which
 from typing import Optional
 from pathlib2 import Path
+
+try:
+    import py7zr
+    _PY7ZR_AVAILABLE = True
+except ImportError:
+    _PY7ZR_AVAILABLE = False
+
+try:
+    import rarfile
+    _RARFILE_AVAILABLE = True
+except ImportError:
+    _RARFILE_AVAILABLE = False
+
+def _find_7zip() -> Optional[str]:
+    found = which('7z') or which('7za')
+    if found:
+        return found
+    # Fallback for Windows where 7-Zip is installed but not added to PATH
+    for path in (r'C:\Program Files\7-Zip\7z.exe', r'C:\Program Files (x86)\7-Zip\7z.exe'):
+        if isfile(path):
+            return path
+    return None
+
+_7ZIP_EXE: Optional[str] = _find_7zip()
 
 # Local imports
 from game_files import Game, Binfile, Track
@@ -157,6 +183,157 @@ class Utils:
             sub_folders = [selected_path]
 
         return sub_folders
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def find_and_extract_game_archives(self, source_path: str, progress_callback=None) -> int:
+        """Scan source_path for zip/7z/rar archives containing PS1 game files (bin+cue),
+        extract any not yet extracted. Returns count of newly extracted archives."""
+        supported = {'.zip'}
+        if _PY7ZR_AVAILABLE:
+            supported.add('.7z')
+        if _RARFILE_AVAILABLE:
+            supported.add('.rar')
+
+        try:
+            archive_entries = [
+                e for e in scandir(source_path)
+                if e.is_file() and not e.name.startswith('.')
+                and splitext(e.name)[1].lower() in supported
+            ]
+        except OSError:
+            return 0
+
+        extracted_count = 0
+
+        for entry in archive_entries:
+            ext = splitext(entry.name)[1].lower()
+
+            if progress_callback:
+                progress_callback(f"Checking archive: {entry.name}")
+
+            try:
+                names = self._get_archive_names(entry.path, ext)
+            except Exception as e:
+                self._debug_print(f"Could not read archive '{entry.name}': {e}")
+                continue
+
+            if not names:
+                continue
+
+            lower_names = [n.lower() for n in names]
+            if not (any(n.endswith('.bin') for n in lower_names) and
+                    any(n.endswith('.cue') for n in lower_names)):
+                continue
+
+            root_dir = self._archive_single_root_dir(names)
+            archive_stem = splitext(entry.name)[0]
+            if root_dir:
+                extract_to = source_path
+                game_folder = join(source_path, root_dir)
+            else:
+                extract_to = join(source_path, archive_stem)
+                game_folder = extract_to
+
+            if exists(game_folder):
+                has_cue = any(
+                    f.lower().endswith('.cue')
+                    for f in listdir(game_folder)
+                    if isfile(join(game_folder, f))
+                )
+                if has_cue:
+                    self._debug_print(f"Already extracted: {entry.name}")
+                    continue
+                # Folder exists but no .cue at root — incomplete or misplaced extraction
+                self._debug_print(f"Removing bad extraction, retrying: {entry.name}")
+                rmtree(game_folder, ignore_errors=True)
+
+            if progress_callback:
+                progress_callback(f"Extracting: {entry.name}")
+
+            try:
+                makedirs(extract_to, exist_ok=True)
+                self._extract_archive(entry.path, ext, extract_to)
+                extracted_count += 1
+                self._debug_print(f"Extracted: {entry.name} -> {game_folder}")
+            except Exception as e:
+                self._debug_print(f"Error extracting '{entry.name}': {e}")
+                if not root_dir and exists(game_folder) and not listdir(game_folder):
+                    rmtree(game_folder, ignore_errors=True)
+
+        return extracted_count
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def _get_archive_names(self, archive_path: str, ext: str) -> list:
+        """Return list of entry names from an archive without extracting."""
+        if ext == '.zip':
+            with zipfile.ZipFile(archive_path, 'r') as af:
+                return af.namelist()
+        elif ext == '.7z' and _PY7ZR_AVAILABLE:
+            with py7zr.SevenZipFile(archive_path, 'r') as af:
+                return af.getnames()
+        elif ext == '.rar' and _RARFILE_AVAILABLE:
+            with rarfile.RarFile(archive_path) as af:
+                return af.namelist()
+        return []
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def _extract_archive(self, archive_path: str, ext: str, extract_to: str):
+        """Extract an archive to the given destination directory.
+        For .7z files, prefers the native 7-Zip CLI (much faster than py7zr) and
+        falls back to py7zr if 7-Zip is not installed."""
+        if ext == '.7z':
+            if _7ZIP_EXE and self._extract_with_7zip_cli(archive_path, extract_to):
+                return
+            if _PY7ZR_AVAILABLE:
+                with py7zr.SevenZipFile(archive_path, 'r') as af:
+                    af.extractall(extract_to)
+        elif ext == '.zip':
+            with zipfile.ZipFile(archive_path, 'r') as af:
+                af.extractall(extract_to)
+        elif ext == '.rar' and _RARFILE_AVAILABLE:
+            with rarfile.RarFile(archive_path) as af:
+                af.extractall(extract_to)
+
+    def _extract_with_7zip_cli(self, archive_path: str, extract_to: str) -> bool:
+        """Extract using the system 7-Zip CLI. Returns True on success."""
+        try:
+            result = subprocess.run(
+                [_7ZIP_EXE, 'x', archive_path, f'-o{extract_to}', '-y'],
+                capture_output=True,
+                timeout=600
+            )
+            return result.returncode == 0
+        except Exception as e:
+            self._debug_print(f"7-Zip CLI failed: {e}")
+            return False
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def _archive_single_root_dir(self, names: list) -> Optional[str]:
+        """If the game files (.bin/.cue) in the archive all share a single root directory,
+        return that directory name. Returns None for flat archives (files at the root level).
+        Only inspects .bin/.cue entries to avoid misidentifying 7z directory entries (which
+        lack the trailing slash that ZIP uses) as flat files."""
+        game_files = [
+            n.replace('\\', '/') for n in names
+            if n.lower().endswith('.bin') or n.lower().endswith('.cue')
+        ]
+        if not game_files:
+            return None
+        roots = set()
+        for entry in game_files:
+            parts = [p for p in entry.split('/') if p]
+            if len(parts) == 1:
+                return None  # game file is directly at the archive root — flat archive
+            roots.add(parts[0])
+        return next(iter(roots)) if len(roots) == 1 else None
     # ************************************************************************************
 
 
