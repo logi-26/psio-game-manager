@@ -53,8 +53,8 @@ from os.path import exists, join, dirname, abspath
 from json import load, dumps
 from argparse import ArgumentParser
 from ast import literal_eval
-from tkinter import Menu, Toplevel, filedialog, StringVar, BooleanVar, TclError, PhotoImage
-from ttkbootstrap import Window, Floodgauge, Treeview, Style, Scrollbar, Labelframe, Label, Button, NO, CENTER, VERTICAL
+from tkinter import Menu, Toplevel, filedialog, StringVar, BooleanVar, TclError, PhotoImage, NO, CENTER, VERTICAL
+from ttkbootstrap import Window, Floodgauge, Treeview, Style, Scrollbar, Labelframe, Label, Button
 from ttkbootstrap.dialogs import MessageDialog
 from ttkbootstrap.constants import DISABLED
 from pathlib2 import Path
@@ -703,11 +703,13 @@ class PSIOGameManager:
 
     def _get_stored_theme(self):
         """Get stored theme from config"""
+        valid_themes = Style().theme_names()
         if exists(self.config_file_path):
             with open(self.config_file_path, encoding="utf-8") as config_file:
-                return load(config_file)['theme']
-        else:
-            return "superhero"
+                theme = load(config_file).get('theme', '')
+                if theme in valid_themes:
+                    return theme
+        return "bootstrap-dark"
 
     def _store_selected_theme(self, theme_name):
         """Store selected theme"""
@@ -799,8 +801,9 @@ class PSIOGameManager:
         sub_menu = Menu(file_menu, tearoff=0)
         dark_menu = Menu(sub_menu, tearoff=0)
         light_menu = Menu(sub_menu, tearoff=0)
-        dark_themes = ['cyborg', 'darkly', 'solar', 'superhero', 'vapor']
-        light_themes = ['cerculean', 'cosmo', 'flatly', 'journal', 'litera', 'lumen', 'minty', 'morph', 'pulse', 'sandstone', 'simplex', 'united', 'yeti']
+        all_themes = sorted(Style().theme_names())
+        dark_themes = [t for t in all_themes if t.endswith('-dark')]
+        light_themes = [t for t in all_themes if t.endswith('-light')]
         for theme in dark_themes:
             dark_menu.add_command(label=theme, command=lambda t=theme: self._switch_theme(t))
         for theme in light_themes:
