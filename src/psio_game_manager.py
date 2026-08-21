@@ -113,9 +113,12 @@ class PSIOGameManager:
         self.progress_bar = None
         self.button_start = None
         self.button_browse = None
+        self.button_cancel = None
         self.treeview_game_list = None
         self.label_src = None
         self.cover_art_frame = None
+
+        self._cancel_event = threading.Event()
 
         self._debug_print(f'\nPSIO Game Manager v{self.CURRENT_REVISION}')
 
@@ -157,6 +160,9 @@ class PSIOGameManager:
         # Loop through all of the Game objects in the game list
         for game_index, game in enumerate(self.game_list):
 
+            if self._cancel_event.is_set():
+                break
+
             # Display the game name in the progress label
             game_name = game.get_cue_sheet().get_game_name()
             self._set_progress_text(f"Processing - {game_name}")
@@ -195,6 +201,13 @@ class PSIOGameManager:
             self.window.after(0, lambda idx=game_index: self._update_game_row(idx))
 
             self._debug_print('***********************************************************\n')
+
+        if self._cancel_event.is_set():
+            self._set_progress_text("Cancelled")
+            self._update_progress_bar(0)
+            self.window.after(0, self._display_game_list)
+            self._debug_print('Processing cancelled.\n')
+            return
 
         # Generate multi-disc games after all of the other processes have been completed
         self._update_progress_bar(100)
@@ -362,6 +375,8 @@ class PSIOGameManager:
             return
 
         for sub_folder in sub_folders:
+            if self._cancel_event.is_set():
+                break
             self._process_sub_folder(selected_path, sub_folder)
 
         self._sort_game_list()
@@ -427,6 +442,14 @@ class PSIOGameManager:
         self._set_progress_text("")
         self._update_progress_bar(100)
 
+        self.window.after(0, lambda: self.button_cancel.configure(state='disabled'))
+        self.window.after(0, lambda: self.button_browse.configure(state='normal'))
+
+        if self._cancel_event.is_set():
+            self._set_progress_text("Cancelled")
+            self.window.after(0, self._display_game_list)
+            return
+
         if self.debug_mode:
             self.window.after(0, lambda m=message: MessageDialog(
                 m, title='Game Details', width=650, padding=(20, 20)
@@ -434,7 +457,6 @@ class PSIOGameManager:
 
         self.window.after(0, self._display_game_list)
         self.window.after(0, lambda: self.button_start.configure(state='normal'))
-        self.window.after(0, lambda: self.button_browse.configure(state='normal'))
     # ************************************************************************************
 
 
@@ -647,18 +669,35 @@ class PSIOGameManager:
         self.label_src.configure(text=f"  {self.src_path.get()}")
         self.button_start['state'] = 'disabled'
         self.button_browse['state'] = 'disabled'
+        self.button_cancel['state'] = 'normal'
+        self._cancel_event.clear()
+        for item in self.treeview_game_list.get_children():
+            self.treeview_game_list.delete(item)
+        self.progress_bar.configure(value=0)
+        self.label_progress.configure(text='')
         threading.Thread(target=self._parse_game_list, daemon=True).start()
 
     def _start_button_clicked(self):
         """Handle start button click"""
         if self.src_path.get():
             self.button_start['state'] = 'disabled'
+            self.button_browse['state'] = 'disabled'
+            self.button_cancel['state'] = 'normal'
+            self._cancel_event.clear()
             threading.Thread(target=self._run_processing, daemon=True).start()
 
     def _run_processing(self):
-        """Run process_games on a background thread and re-enable the button when done."""
+        """Run process_games on a background thread and re-enable the buttons when done."""
         self.process_games()
         self.window.after(0, lambda: self.button_start.configure(state='normal'))
+        self.window.after(0, lambda: self.button_browse.configure(state='normal'))
+        self.window.after(0, lambda: self.button_cancel.configure(state='disabled'))
+
+    def _cancel_button_clicked(self):
+        """Signal the active background operation to stop."""
+        self._cancel_event.set()
+        self.button_cancel['state'] = 'disabled'
+        self._set_progress_text("Cancelling...")
 
     def _get_stored_theme(self):
         """Get stored theme from config"""
@@ -897,16 +936,20 @@ class PSIOGameManager:
         frame_y = 580
 
         progress_frame = Labelframe(self.window, text='Process', bootstyle="primary")
-        progress_frame.place(x=20, y=frame_y, width=window_width -30, height=150)
+        progress_frame.place(x=20, y=frame_y, width=window_width -30, height=155)
 
         self.progress_bar = Floodgauge(font=(None, 14, 'bold'), mask='', mode='determinate')
-        self.progress_bar.place(x=30, y=frame_y +30, width=window_width -50, height=30)
+        self.progress_bar.place(x=30, y=frame_y +25, width=window_width -50, height=28)
 
         self.label_progress = Label(self.window, text="", width=120, bootstyle="primary")
-        self.label_progress.place(x=30, y=frame_y +60, width=window_width -450, height=30)
+        self.label_progress.place(x=30, y=frame_y +56, width=window_width -450, height=16)
 
         self.button_start = Button(self.window, text='Process', command=self._start_button_clicked, state=DISABLED)
-        self.button_start.place(x=30, y=frame_y +100, width=window_width -50, height=30)
+        self.button_start.place(x=30, y=frame_y +75, width=window_width -50, height=30)
+
+        self.button_cancel = Button(self.window, text='Cancel', bootstyle='danger',
+                                    command=self._cancel_button_clicked, state=DISABLED)
+        self.button_cancel.place(x=30, y=frame_y +110, width=window_width -50, height=30)
 
         self.label_progress.after(1000, self.db.ensure_database_exists)
     # ************************************************************************************

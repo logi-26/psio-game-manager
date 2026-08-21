@@ -178,7 +178,7 @@ class Utils:
 
         # Return if the game does not require LibCrypt patching
         if not game.get_libcrypt_required():
-            return
+            return False
 
         game_full_path = join(game.get_directory_path(), game.get_directory_name())
         if self.db.copy_libcrypt_patch(game_full_path, game.get_id()):
