@@ -51,6 +51,7 @@ import webbrowser
 import urllib.request
 from datetime import datetime
 from os.path import exists, join, dirname, abspath
+from shutil import copytree
 from json import load, loads, dumps
 from argparse import ArgumentParser
 from ast import literal_eval
@@ -121,6 +122,8 @@ class PSIOGameManager:
         self.cover_art_frame = None
         self.summary_labels = {}
         self.selected_theme_var = None
+        self.label_dest = None
+        self.button_browse_dest = None
 
         self._cancel_event = threading.Event()
 
@@ -218,6 +221,10 @@ class PSIOGameManager:
         self._update_progress_bar(100)
         self._set_progress_text("Generating multi-disc files...")
         self.utils.generate_multidisc_files(self.game_list)
+
+        # Copy processed games to the destination path if one was selected
+        if self.dest_path.get():
+            self._copy_to_destination()
 
         # Clear the progress status
         self._update_progress_bar(100)
@@ -851,7 +858,7 @@ class PSIOGameManager:
     def setup_gui(self):
         """Setup the GUI"""
         window_width = 1300
-        window_height = 850
+        window_height = 930
 
         try:
             self.window = Window(
@@ -959,6 +966,9 @@ class PSIOGameManager:
         # Browse frame
         self._gui_browse_frame(window_width)
 
+        # Destination frame
+        self._gui_dest_frame(window_width)
+
         # Game list frame
         self._gui_game_list_frame(window_width)
 
@@ -1008,10 +1018,75 @@ class PSIOGameManager:
 
 
     # ************************************************************************************
+    def _gui_dest_frame(self, window_width: int):
+        """Create the destination (SD card) frame"""
+        dest_frame = Labelframe(self.window, text='Destination (SD Card)', bootstyle="secondary")
+        dest_frame.place(x=15, y=90, width=window_width - 30, height=70)
+
+        self.label_dest = Label(self.window,
+                                text='  Optional: select SD card destination folder',
+                                width=60, borderwidth=2, relief='solid',
+                                bootstyle="secondary", font=("Arial", 11))
+        self.label_dest.place(x=30, y=115, width=window_width - 200, height=30)
+
+        self.button_browse_dest = Button(self.window, text='Browse', bootstyle="secondary",
+                                         command=self._browse_dest_button_clicked)
+        self.button_browse_dest.place(x=window_width - 155, y=115, width=130, height=30)
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def _browse_dest_button_clicked(self):
+        """Handle destination browse button click"""
+        selected_path = filedialog.askdirectory(initialdir='/', title='Select SD Card Destination Folder')
+        if not selected_path:
+            return
+        self.dest_path.set(selected_path)
+        self.label_dest.configure(text=f"  {self.dest_path.get()}")
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def _copy_to_destination(self):
+        """Copy all processed game folders to the selected destination path"""
+        dest = self.dest_path.get()
+        if not dest:
+            return
+
+        copied_folders = set()
+        games = self.game_list
+        total = len(games)
+
+        for i, game in enumerate(games):
+            if self._cancel_event.is_set():
+                break
+
+            game_folder_path = join(game.get_directory_path(), game.get_directory_name())
+
+            # Multi-disc games share a folder — only copy it once
+            if game_folder_path in copied_folders:
+                continue
+            copied_folders.add(game_folder_path)
+
+            self._set_progress_text(f"Copying to SD card - {game.get_directory_name()}")
+            self._update_progress_bar(int((i / total) * 100) if total else 0)
+
+            dest_folder = join(dest, game.get_directory_name())
+            try:
+                copytree(game_folder_path, dest_folder, dirs_exist_ok=True)
+            except Exception as e:
+                self._debug_print(f"Error copying '{game_folder_path}': {e}")
+
+        self._update_progress_bar(100)
+        self._set_progress_text("")
+    # ************************************************************************************
+
+
+    # ************************************************************************************
     def _gui_game_list_frame(self, window_width: int):
         """Create the game list frame"""
         game_list_frame = Labelframe(self.window, text='Games', bootstyle="primary")
-        game_list_frame.place(x=15, y=100, width=window_width -30, height=450)
+        game_list_frame.place(x=15, y=180, width=window_width -30, height=450)
 
         # Create a custom style for the Treeview
         style = Style()
@@ -1050,8 +1125,8 @@ class PSIOGameManager:
                                       command=self.treeview_game_list.yview)
 
         self.treeview_game_list.configure(yscroll=scrollbar_game_list.set)
-        self.treeview_game_list.place(x=30, y=120, width=window_width -70, height=410)
-        scrollbar_game_list.place(x=window_width - 35, y=120, height=410)
+        self.treeview_game_list.place(x=30, y=200, width=window_width -70, height=410)
+        scrollbar_game_list.place(x=window_width - 35, y=200, height=410)
     # ************************************************************************************
 
 
@@ -1059,7 +1134,7 @@ class PSIOGameManager:
     def _gui_summary_frame(self, window_width: int):
         """Create the summary frame"""
         summary_frame = Labelframe(self.window, text='Summary', bootstyle="primary")
-        summary_frame.place(x=15, y=560, width=window_width - 30, height=80)
+        summary_frame.place(x=15, y=640, width=window_width - 30, height=80)
 
         stats = ['Total', 'Unidentified', 'Invalid Names', 'Missing Covers', 'Multi-bin', 'Multi-disc']
 
@@ -1103,7 +1178,7 @@ class PSIOGameManager:
     # ************************************************************************************
     def _gui_process_frame(self, window_width: int):
         """Create the process frame"""
-        frame_y = 650
+        frame_y = 730
 
         progress_frame = Labelframe(self.window, text='Process', bootstyle="primary")
         progress_frame.place(x=20, y=frame_y, width=window_width -30, height=155)
