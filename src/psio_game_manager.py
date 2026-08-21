@@ -959,6 +959,7 @@ class PSIOGameManager:
         """Run the application"""
         self.setup_gui()
         self.window.mainloop()
+        self.db.close()
 
 
 def parse_arguments():

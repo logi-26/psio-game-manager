@@ -11,6 +11,7 @@ from sys import exit
 from os import remove, makedirs
 from os.path import exists, join, getsize
 from sqlite3 import connect, Error
+from threading import Lock
 
 
 class GameDatabase:
@@ -20,6 +21,8 @@ class GameDatabase:
         self._database_path = None
         self._database_file = None
         self._database_full_path = None
+        self._conn = None
+        self._lock = Lock()
 
 
     # ************************************************************************************
@@ -88,14 +91,24 @@ class GameDatabase:
 
 
     # ************************************************************************************
-    def _create_connection(self):
-        """Establish a connection with the local SQLite3 database"""
+    def _open_connection(self):
+        """Open the persistent database connection"""
         try:
-            conn = connect(self._database_full_path)
-            return conn
+            # check_same_thread=False allows background threads to share the connection;
+            # the Lock serialises access so concurrent queries don't race.
+            self._conn = connect(self._database_full_path, check_same_thread=False)
         except Error as error:
             print(error)
-            return None
+            self._conn = None
+    # ************************************************************************************
+
+
+    # ************************************************************************************
+    def close(self):
+        """Close the persistent database connection"""
+        if self._conn:
+            self._conn.close()
+            self._conn = None
     # ************************************************************************************
 
 
@@ -110,7 +123,7 @@ class GameDatabase:
 
     # ************************************************************************************
     def ensure_database_exists(self):
-        """Ensures that the database file exists and has been merged"""
+        """Ensures that the database file exists and has been merged, then opens the connection"""
         if not exists(self._database_full_path):
             if self._database_splits_exist():
                 self._merge_database()
@@ -124,66 +137,63 @@ class GameDatabase:
                 print('Database split-files not found!')
                 print('******************************\n')
                 exit()
+
+        self._open_connection()
     # ************************************************************************************
 
 
     # ************************************************************************************
     def select(self, select_query: str, params: tuple = ()):
         """Select data from the local database"""
-        rows = []
-        conn = self._create_connection()
+        if not self._conn:
+            return []
         try:
-            if conn:
-                cursor = conn.cursor()
+            with self._lock:
+                cursor = self._conn.cursor()
                 cursor.execute(select_query, params)
                 rows = cursor.fetchall()
                 cursor.close()
+                return rows
         except Error:
-            pass
-        finally:
-            if conn:
-                conn.close()
-        return rows
+            return []
     # ************************************************************************************
 
 
     # ************************************************************************************
     def _extract_game_cover_blob(self, row_id, image_out_path: str):
         """Extract the game cover art data from the local database"""
-        conn = self._create_connection()
+        if not self._conn:
+            return
         try:
-            if conn:
-                cursor = conn.cursor()
-                with open(image_out_path, 'wb') as output_file:
-                    cursor.execute('SELECT psio FROM covers WHERE id = ?', (row_id,))
-                    image_blob = cursor.fetchone()
-                    output_file.write(image_blob[0])
+            with self._lock:
+                cursor = self._conn.cursor()
+                cursor.execute('SELECT psio FROM covers WHERE id = ?', (row_id,))
+                image_blob = cursor.fetchone()
                 cursor.close()
+            if image_blob:
+                with open(image_out_path, 'wb') as output_file:
+                    output_file.write(image_blob[0])
         except Error:
             pass
-        finally:
-            if conn:
-                conn.close()
     # ************************************************************************************
 
 
     # ************************************************************************************
     def _extract_game_libcrypt_patch_blob(self, row_id, ppf_out_path: str):
         """Extract the game LibCrypt PPF patch data from the local database"""
-        conn = self._create_connection()
+        if not self._conn:
+            return
         try:
-            if conn:
-                cursor = conn.cursor()
-                with open(ppf_out_path, 'wb') as output_file:
-                    cursor.execute('SELECT psio FROM libcrypt_patches WHERE id = ?', (row_id,))
-                    patch_blob = cursor.fetchone()
-                    output_file.write(patch_blob[0])
+            with self._lock:
+                cursor = self._conn.cursor()
+                cursor.execute('SELECT psio FROM libcrypt_patches WHERE id = ?', (row_id,))
+                patch_blob = cursor.fetchone()
                 cursor.close()
+            if patch_blob:
+                with open(ppf_out_path, 'wb') as output_file:
+                    output_file.write(patch_blob[0])
         except Error:
             pass
-        finally:
-            if conn:
-                conn.close()
     # ************************************************************************************
 
 
@@ -300,24 +310,21 @@ class GameDatabase:
     # ************************************************************************************
     def copy_game_cover(self, output_path: str, game_id: str, game_name: str) -> bool:
         """Copy game front cover art from the database. Returns True if copied."""
-        if not game_id:
+        if not game_id or not self._conn:
             return False
         formatted_game_id = game_id.replace('-', '_')
-        conn = self._create_connection()
         try:
-            if conn:
-                cursor = conn.cursor()
+            with self._lock:
+                cursor = self._conn.cursor()
                 cursor.execute('SELECT psio FROM covers WHERE game_id = ?', (formatted_game_id,))
                 row = cursor.fetchone()
-                if row:
-                    with open(join(output_path, f'{game_name}.bmp'), 'wb') as f:
-                        f.write(row[0])
-                    return True
+                cursor.close()
+            if row:
+                with open(join(output_path, f'{game_name}.bmp'), 'wb') as f:
+                    f.write(row[0])
+                return True
         except Error:
             pass
-        finally:
-            if conn:
-                conn.close()
         return False
     # ************************************************************************************
 
@@ -325,23 +332,20 @@ class GameDatabase:
     # ************************************************************************************
     def copy_libcrypt_patch(self, output_path: str, game_id: str) -> bool:
         """Copy LibCrypt PPF patch from the database. Returns True if copied."""
-        if not game_id:
+        if not game_id or not self._conn:
             return False
         formatted_game_id = game_id.replace('-', '_')
-        conn = self._create_connection()
         try:
-            if conn:
-                cursor = conn.cursor()
+            with self._lock:
+                cursor = self._conn.cursor()
                 cursor.execute('SELECT psio FROM libcrypt_patches WHERE game_id = ?', (formatted_game_id,))
                 row = cursor.fetchone()
-                if row:
-                    with open(join(output_path, f'{game_id}.ppf'), 'wb') as f:
-                        f.write(row[0])
-                    return True
+                cursor.close()
+            if row:
+                with open(join(output_path, f'{game_id}.ppf'), 'wb') as f:
+                    f.write(row[0])
+                return True
         except Error:
             pass
-        finally:
-            if conn:
-                conn.close()
         return False
     # ************************************************************************************
