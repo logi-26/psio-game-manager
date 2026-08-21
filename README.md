@@ -347,5 +347,5 @@ This project requires Python 3 and the following Python packages:
      ```
    - Build the executable and bundle the app icon and single database file:
      ```bash
-     pyinstaller --onefile --add-data "data\\psio_assist.db;data" --add-data "icon.ico;." --icon=icon.ico --noconsole --distpath builds/windows psio_game_manager.py
+     pyinstaller --onefile --collect-all ttkbootstrap --add-data "data\psio_assist.db;data" --add-data "icon.ico;." --icon=icon.ico --noconsole --distpath builds/windows psio_game_manager.py
      ```
