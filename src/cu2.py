@@ -1,4 +1,4 @@
-'''
+﻿'''
 Generates a CU2 file from a PlayStation CUE file
 '''
 
@@ -6,6 +6,7 @@ from os.path import exists, join, getsize
 from pathlib import Path
 from typing import Optional
 from re import compile, IGNORECASE
+from helpers import timecode_to_sectors
 
 
 class Cu2Generator:
@@ -29,18 +30,6 @@ class Cu2Generator:
         """Print debug messages if debug mode is enabled"""
         if self.debug_mode:
             print(message)
-    # ************************************************************************************
-
-
-    # ************************************************************************************
-    def _timecode_to_sectors(self, time_code: str) -> int:
-        """Convert time code to sectors"""
-        minutes = int(time_code[0:2])
-        seconds = int(time_code[3:5])
-        sectors = int(time_code[6:8])
-        minutes_sectors = int(minutes * 60 * 75)
-        seconds_sectors = int(seconds * 75)
-        return minutes_sectors + seconds_sectors + sectors
     # ************************************************************************************
 
 
@@ -94,8 +83,8 @@ class Cu2Generator:
     # ************************************************************************************
     def _timecode_addition(self, time_code: str, offset: str) -> str:
         """Add two timecodes together, capping at 449999 sectors"""
-        time_code = self._timecode_to_sectors(time_code)
-        offset = self._timecode_to_sectors(offset)
+        time_code = timecode_to_sectors(time_code)
+        offset = timecode_to_sectors(offset)
         result = min(time_code + offset, 449999)
         return self._sectors_to_timecode(result)
     # ************************************************************************************
@@ -105,7 +94,7 @@ class Cu2Generator:
     def _get_cue_content(self, cue_path: str) -> Optional[list]:
         """Read and return the content of a CUE file"""
         try:
-            with open(cue_path, 'r', encoding='utf-8') as cue_file:
+            with open(cue_path, 'r', encoding='utf-8', errors='replace') as cue_file:
                 return cue_file.read().splitlines()
         except IOError:
             self._debug_print(f'ERROR: Could not open {cue_path}')
@@ -171,13 +160,13 @@ class Cu2Generator:
         """Process pregap for a track and return the formatted output"""
         if index_00 and self.format_revision == 2:
             timecode_addition = self._timecode_addition(index_00, "00:02:00")
-            timecode_sectors = self._timecode_to_sectors(timecode_addition)
+            timecode_sectors = timecode_to_sectors(timecode_addition)
             return f'pregap{track:02d}  {self._sectors_to_timecode_alternative(timecode_sectors)}\r\n'
         elif index_00 is None and index_01 and self.format_revision == 2:
             self._debug_print(f'WARNING: The PREGAP command is used for track {track}, which requires the software to insert data into the image or disc. '
                               f'This is not supported. Using index 01 as pregap.')
             timecode_addition = self._timecode_addition(index_01, "00:02:00")
-            timecode_sectors = self._timecode_to_sectors(timecode_addition)
+            timecode_sectors = timecode_to_sectors(timecode_addition)
             return f'pregap{track:02d}  {self._sectors_to_timecode_alternative(timecode_sectors)}\r\n'
         else:
             self._debug_print(f'ERROR: Could not find pregap position (index 00) for track {track} in cue sheet: {cue_path}')
@@ -190,7 +179,7 @@ class Cu2Generator:
         """Process track start position and return the formatted output"""
         if index_01:
             timecode_addition = self._timecode_addition(index_01, "00:02:00")
-            timecode_sectors = self._timecode_to_sectors(timecode_addition)
+            timecode_sectors = timecode_to_sectors(timecode_addition)
             return f'track{track:02d}   {self._sectors_to_timecode_alternative(timecode_sectors)}\r\n'
         self._debug_print(f'ERROR: Could not find starting position (index 01) for track {track} in cue sheet: {cue_path}')
         return None
@@ -244,7 +233,7 @@ class Cu2Generator:
 
         # Add end of last track
         timecode_addition = self._timecode_addition(self._sectors_to_timecode(sectors), "00:02:00")
-        timecode_sectors = self._timecode_to_sectors(timecode_addition)
+        timecode_sectors = timecode_to_sectors(timecode_addition)
         output.append(f'\r\ntrk end   {self._sectors_to_timecode_alternative(timecode_sectors)}')
 
         # Write CU2 file

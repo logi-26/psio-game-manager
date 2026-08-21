@@ -1,4 +1,4 @@
-# System imports
+﻿# System imports
 from os import listdir, scandir, makedirs, remove, access, R_OK
 from os.path import exists, join, dirname, splitext, isfile, isabs
 from re import search, sub
@@ -11,13 +11,13 @@ from game_files import Game, Binfile, Track
 from crc_32 import CrcFileVerifier
 from binmerge import BinMerger
 from ppf_patcher import PPFProcessor
+from helpers import timecode_to_sectors
 
 
 class Utils:
     """General utilities class"""
     MAX_GAME_NAME_LENGTH = 56
     INVALID_FILENAME_CHARS = r'[.\\/:*?"<>|]'
-    MAX_LINES_TO_CHECK = 300
     REGION_CODES = ['DTLS_', 'SCES_', 'SLES_', 'SLED_', 'SCED_', 'SCUS_',
                     'SLUS_', 'SLPS_', 'SCAJ_', 'SLKA_', 'SLPM_', 'SCPS_',
                     'SCPM_', 'PCPX_', 'PAPX_', 'PTPX_', 'LSP0_', 'LSP1_',
@@ -71,21 +71,18 @@ class Utils:
                 pregap_sectors = 0
                 if pregap:
                     try:
-                        time = pregap.split(':')
-                        if len(time) != 3:
+                        parts = pregap.split(':')
+                        if len(parts) != 3:
                             print(f"Warning: Invalid pregap format for track {track_number}: {pregap}. Expected MM:SS:FF.")
-                            continue  # Skip this row
-                        minutes = int(time[0])
-                        seconds = int(time[1])
-                        frames = int(time[2])
-                        # Validate ranges (seconds < 60, frames < 75 for CD timing)
+                            continue
+                        minutes, seconds, frames = int(parts[0]), int(parts[1]), int(parts[2])
                         if not (0 <= seconds < 60 and 0 <= frames < 75):
                             print(f"Warning: Invalid pregap values for track {track_number}: {pregap}. Seconds must be < 60, frames < 75.")
                             continue
-                        pregap_sectors = minutes * 60 * 75 + seconds * 75 + frames
+                        pregap_sectors = timecode_to_sectors(pregap)
                     except ValueError as e:
                         print(f"Error: Converting pregap '{pregap}' for track {track_number}: {e}")
-                        continue  # Skip this row
+                        continue
 
                 # Handle crc safely
                 crc_value = crc.lower() if crc and isinstance(crc, str) else ""
@@ -144,7 +141,7 @@ class Utils:
         """Get a list of sub-folders in the selected source directory"""
 
         if not selected_path or selected_path == "":
-            return
+            return []
 
         sub_folders = [
             f.name for f in scandir(selected_path)
@@ -158,17 +155,6 @@ class Utils:
             sub_folders = [selected_path]
 
         return sub_folders
-    # ************************************************************************************
-
-
-    # ************************************************************************************
-    def cuestamp_to_sectors(self, timestamp: str) -> int:
-        """Convert MM:SS:FF timestamp to sectors."""
-        time = timestamp.split(':')
-        if len(time) != 3:
-            return 0
-        minutes, seconds, frames = map(int, time)
-        return minutes * 60 * 75 + seconds * 75 + frames
     # ************************************************************************************
 
 
@@ -202,6 +188,8 @@ class Utils:
 
                     # Delete the extracted PPF file
                     remove(ppf_path)
+
+        return game.get_libcrypt_applied()
     # ************************************************************************************
 
 
@@ -336,14 +324,6 @@ class Utils:
 
 
     # ************************************************************************************
-    def find_game_by_id(self, game_id: str, game_list: list) -> Game:
-        """Return the Game object from teh game list with the specified game ID"""
-        game_dict = {game.get_id(): game for game in game_list}
-        return game_dict.get(game_id)
-    # ************************************************************************************
-
-
-    # ************************************************************************************
     def name_for_multidisc_folder(self, game_name: str) -> str:
         """Remove any text within parentheses (complete or incomplete), including the parentheses"""
         # First, remove complete parenthetical phrases
@@ -360,7 +340,7 @@ class Utils:
     def detect_cdda(self, cue_file_path: str) -> bool:
         """Reads a CUE file and determines if it uses CDDA (CD Digital Audio) tracks"""
         try:
-            with open(cue_file_path, 'r', encoding="utf-8") as file:
+            with open(cue_file_path, 'r', encoding='utf-8', errors='replace') as file:
                 lines = file.readlines()
 
             # Count tracks and check for AUDIO tracks
@@ -435,6 +415,9 @@ class Utils:
             if exists(ppf_path):
                 bin_file, ppf_file = self.ppf_patcher.open_files(bin_path, ppf_path)
 
+                if not bin_file or not ppf_file:
+                    return
+
                 with bin_file, ppf_file:
                     version = self.ppf_patcher.get_ppf_version(ppf_file)
 
@@ -451,20 +434,6 @@ class Utils:
 
                 # Delete the PPF patch file after it has been applied to the BIN file
                 remove(ppf_path)
-    # ************************************************************************************
-
-
-    # ************************************************************************************
-    def collect_multi_games(self, game: Game, game_list: list):
-        """Collect all games in the disc collection."""
-        disc_collection = game.get_disc_collection()
-
-        if disc_collection is None:
-            return []
-        return [
-            self.find_game_by_id(game_id.replace("_", "-"), game_list)
-            for game_id in disc_collection
-        ]
     # ************************************************************************************
 
 
@@ -680,7 +649,7 @@ class Utils:
         current_track = None
         bin_files_missing = False
 
-        with open(cue_path, 'r', encoding='utf-8') as f:
+        with open(cue_path, 'r', encoding='utf-8', errors='replace') as f:
             for line in f:
                 line = line.strip()
 
@@ -722,7 +691,7 @@ class Utils:
                 if m and current_track:
                     index_id = int(m.group(1))
                     timestamp = m.group(2)
-                    file_offset = self.cuestamp_to_sectors(timestamp)
+                    file_offset = timecode_to_sectors(timestamp)
                     current_track.add_index({'id': index_id, 'stamp': timestamp, 'file_offset': file_offset})
                     if index_id == 1:
                         current_track.set_file_offset(file_offset)
