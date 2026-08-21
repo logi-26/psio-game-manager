@@ -246,20 +246,30 @@ class Utils:
         cuesheet = game.get_cue_sheet()
         game_name = cuesheet.get_game_name()
 
-        # If the game name has not changed
+        # If the game name and folder name are both already correct, nothing to do
+        if game_name == new_game_name and game.get_directory_name() == new_game_name:
+            return
+
+        game_full_path = Path(game.get_directory_path()) / game.get_directory_name()
+        new_game_dir = game_full_path.parent / new_game_name
+
+        # If only the folder name is wrong (files are already correctly named), rename the folder in place
         if game_name == new_game_name:
+            try:
+                game_full_path.rename(new_game_dir)
+                game.set_directory_name(new_game_name)
+            except OSError as error:
+                print(f"Error renaming folder '{game_full_path}': {error}")
             return
 
         # Get the BIN file (should be a single BIN file at this point)
         bin_file = cuesheet.get_bin_files()[0]
 
         # Get the original file paths
-        game_full_path = Path(game.get_directory_path()) / game.get_directory_name()
         original_cu2_path = game_full_path / f'{game_name}.cu2'
         original_bmp_path = game_full_path / f'{game_name}.bmp'
 
         # Create new directory for the game
-        new_game_dir = game_full_path.parent / new_game_name
         new_game_dir.mkdir(exist_ok=True)
         if not new_game_dir.exists():
             print(f"Error creating directory: {new_game_dir}")
