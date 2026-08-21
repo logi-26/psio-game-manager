@@ -47,6 +47,7 @@ Copyright (C) 2021 LoGi26
 # System imports
 import sys
 import threading
+import webbrowser
 from datetime import datetime
 from os.path import exists, join, dirname, abspath
 from json import load, dumps
@@ -835,6 +836,7 @@ class PSIOGameManager:
 
         help_menu = Menu(menubar, tearoff=0)
         help_menu.add_command(label='About', command=self._show_about_dialog)
+        help_menu.add_command(label='Report Bug', command=lambda: webbrowser.open('https://github.com/logi-26/psio-game-manager/issues'))
         menubar.add_cascade(label="Help", menu=help_menu, underline=0)
 
         # Browse frame
