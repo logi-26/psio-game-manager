@@ -703,12 +703,9 @@ class PSIOGameManager:
 
     def _get_stored_theme(self):
         """Get stored theme from config"""
-        valid_themes = Style().theme_names()
         if exists(self.config_file_path):
             with open(self.config_file_path, encoding="utf-8") as config_file:
-                theme = load(config_file).get('theme', '')
-                if theme in valid_themes:
-                    return theme
+                return load(config_file).get('theme', 'bootstrap-dark')
         return "bootstrap-dark"
 
     def _store_selected_theme(self, theme_name):
@@ -773,12 +770,20 @@ class PSIOGameManager:
         window_width = 1300
         window_height = 770
 
-        self.window = Window(
-            title=f'PSIO Game Manager v{self.CURRENT_REVISION}',
-            themename=self._get_stored_theme(),
-            size=[window_width, window_height],
-            resizable=[False, False]
-        )
+        try:
+            self.window = Window(
+                title=f'PSIO Game Manager v{self.CURRENT_REVISION}',
+                themename=self._get_stored_theme(),
+                size=[window_width, window_height],
+                resizable=[False, False]
+            )
+        except Exception:
+            self.window = Window(
+                title=f'PSIO Game Manager v{self.CURRENT_REVISION}',
+                themename='bootstrap-dark',
+                size=[window_width, window_height],
+                resizable=[False, False]
+            )
 
         # Set the app icon based on OS
         self._load_app_icon()
