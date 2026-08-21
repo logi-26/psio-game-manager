@@ -53,8 +53,8 @@ from os.path import exists, join, dirname, abspath
 from json import load, dumps
 from argparse import ArgumentParser
 from ast import literal_eval
-from tkinter import Menu, Toplevel, filedialog, StringVar, BooleanVar, TclError, PhotoImage, NO, CENTER, VERTICAL
-from ttkbootstrap import Window, Floodgauge, Treeview, Style, Scrollbar, Labelframe, Label, Button
+from tkinter import Menu, filedialog, StringVar, BooleanVar, TclError, PhotoImage, NO, CENTER, VERTICAL
+from ttkbootstrap import Window, Toplevel, Floodgauge, Treeview, Style, Scrollbar, Labelframe, Label, Button
 from ttkbootstrap.dialogs import MessageDialog
 from ttkbootstrap.constants import DISABLED
 from pathlib2 import Path
@@ -810,9 +810,9 @@ class PSIOGameManager:
         dark_themes = [t for t in all_themes if t.endswith('-dark')]
         light_themes = [t for t in all_themes if t.endswith('-light')]
         for theme in dark_themes:
-            dark_menu.add_command(label=theme, command=lambda t=theme: self._switch_theme(t))
+            dark_menu.add_command(label=theme.removesuffix('-dark'), command=lambda t=theme: self._switch_theme(t))
         for theme in light_themes:
-            light_menu.add_command(label=theme, command=lambda t=theme: self._switch_theme(t))
+            light_menu.add_command(label=theme.removesuffix('-light'), command=lambda t=theme: self._switch_theme(t))
         sub_menu.add_cascade(label='Dark', menu=dark_menu)
         sub_menu.add_cascade(label='Light', menu=light_menu)
 
