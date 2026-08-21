@@ -121,6 +121,7 @@ class PPFProcessor:
         else:  # PPF3
             ppf_file.seek(57)
             block_check = ppf_file.read(1)[0]
+            undo = ppf_file.read(1)[0]  # byte 58 — undo data flag
             id_len = self._show_file_id(ppf_file, 3)
             seek_pos = 1084 if block_check else 60
             count = ppf_file.seek(0, SEEK_END) - seek_pos
@@ -161,8 +162,8 @@ class PPFProcessor:
             seek_pos += offset_size + 1 + anz
             count -= offset_size + 1 + anz
 
-            # Skip the undo data in PPF3 patch files if present
-            if ppf_ver == 3:
+            # Skip the undo data in PPF3 patch files only if undo flag is set
+            if ppf_ver == 3 and undo:
                 ppf_file.seek(anz, SEEK_CUR)
                 count -= anz
 

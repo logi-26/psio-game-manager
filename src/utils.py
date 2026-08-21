@@ -556,6 +556,9 @@ class Utils:
                 continue
 
             multi_games = [game_lookup.get(gid.replace('_', '-')) for gid in disc_collection]
+            if any(g is None for g in multi_games):
+                self._debug_print(f"Skipping multi-disc collection for '{game.get_id()}' — not all discs are present")
+                continue
             if len(multi_games) <= 1:
                 continue
 
