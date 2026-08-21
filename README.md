@@ -1,4 +1,4 @@
-# PSIO Game Manager
+﻿# PSIO Game Manager
 Prepare PlayStation 1 bin/cue games for use with a PSIO device.<br>
 The only PSIO app that does everything for your autonomously.<br>
 
@@ -9,10 +9,11 @@ Organises and standardises PlayStation 1 games into a format acceptable by the P
 
 - Works on Linux, Mac and Windows.
 - Works in batch mode on all selected games.
+- Automatically extracts games from ZIP, 7z, and RAR archives.
 - Merges all multi-bin games into single bin files.
 - Generates CU2 files for all games that use CDDA audio.
 - Adds game cover images for games that do not have them.
-- Ensures that game names are not greater than 60 characters and do not contain invalid characters.
+- Ensures that game names are not greater than 56 characters and do not contain invalid characters.
 - Generates the MULTIDISC.LST file for all multi-disc games and organises them into a single directory.
 - Detects and patches games that use LibCrypt.
 - OPTIONAL:
@@ -25,7 +26,7 @@ https://github.com/logi-26/psio-game-manager/releases/tag/V0.3<br/>
 
 ## Notes
   - For best performance, use the application with your games stored on a PC HDD and then transfer to an SD card.
-  - The application requires the games cue sheet to identify the game.
+  - The application requires the game's cue sheet to identify the game. Games inside ZIP, 7z, or RAR archives are extracted automatically before processing.
   - If a game is a single disc game the disc number will be displayed as zero.
   - CRC checks make the process a lot slower (turned off by default).
 ##### Multi-disc LST
@@ -69,7 +70,7 @@ https://github.com/logi-26/psio-game-manager/releases/tag/V0.3<br/>
   - SCES_024.91 - Barbie: Super Sports (Spain)
   - SLES_029.77 - BDFL Manager 2001 (Germany)
   - SLES_036.05 - BDFL Manager 2002 (Germany)
-  - SLES_030.62 - Bundesliga 2001 – The Football Manager (Europe)
+  - SLES_030.62 - Bundesliga 2001 â€“ The Football Manager (Europe)
   - SLES_022.93 - Canal+ Premier Manager
   - SLES_027.66 - Cochons de Guerre, Les (France)
   - SCES_028.34 - Crash Bash (Europe)
@@ -265,7 +266,10 @@ https://github.com/logi-26/psio-game-manager/releases/tag/V0.3<br/>
 ## Dependencies
 This project requires Python 3 and the following Python packages:
 - `ttkbootstrap`
+- `pillow`
 - `pathlib2`
+- `py7zr`
+- `rarfile`
 
 ### Installation Steps for running the Python scripts
 
@@ -324,7 +328,8 @@ This project requires Python 3 and the following Python packages:
 
 ## Usage
 1. **Using the GUI**:
-   - Click on the **Browse** button and select the root directory that contains your PlayStation games.
+   - Click on the **source path label** and select the root directory that contains your PlayStation games.
+   - OPTIONAL: Click on the **destination path label** to select an SD card destination. Processed games will be copied there automatically.
    - OPTIONAL: Select to rename all games using the game names from the PlayStation Redump project.
    - Click on the **Process** button to process the games.
    - The progress bar will display the progress of the application and current status.
@@ -347,5 +352,5 @@ This project requires Python 3 and the following Python packages:
      ```
    - Build the executable and bundle the app icon and single database file:
      ```bash
-     pyinstaller --onefile --collect-all ttkbootstrap --add-data "data\psio_assist.db;data" --add-data "icon.ico;." --icon=icon.ico --noconsole --distpath builds/windows psio_game_manager.py
+     pyinstaller --onefile --collect-all ttkbootstrap --collect-all py7zr --collect-all rarfile --add-data "data\psio_assist.db;data" --add-data "icon.ico;." --icon=icon.ico --noconsole --distpath builds/windows psio_game_manager.py
      ```
