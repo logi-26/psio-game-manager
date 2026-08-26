@@ -329,7 +329,7 @@ This project requires Python 3 and the following Python packages:
 ## Usage
 1. **Using the GUI**:
    - Click on the **source path label** and select the root directory that contains your PlayStation games.
-   - OPTIONAL: Click on the **destination path label** to select an SD card destination. Processed games will be copied there automatically.
+   - OPTIONAL: Click on the **destination path label** to select an SD card destination. Processed games will be copied to the destination directory automatically.
    - OPTIONAL: Select to rename all games using the game names from the PlayStation Redump project.
    - Click on the **Process** button to process the games.
    - The progress bar will display the progress of the application and current status.
